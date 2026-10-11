@@ -222,6 +222,10 @@ final class WorktreeTerminalState {
   /// tick that actually reads the screen, so a press during a delegated tick's
   /// suspension still gets its full tick next.
   @ObservationIgnored var agentDetectionFullTickRequests: Set<UUID> = []
+  /// Until when a wake keeps a surface on the active cadence
+  /// (`AgentDetectionSchedule.settleWindow`), so the frame a session switch settles into
+  /// is read before the tick delegates again.
+  @ObservationIgnored var agentDetectionSettleUntilBySurface: [UUID: Date] = [:]
   /// Bumped by every cleanup of a surface's detection state. A poll re-reads it after
   /// each suspension: a close followed by an undo restores the same surface id, and
   /// the old poll's continuation must not act on the restored pane.

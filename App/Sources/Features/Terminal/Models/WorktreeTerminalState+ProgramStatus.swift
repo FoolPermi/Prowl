@@ -213,6 +213,7 @@ extension WorktreeTerminalState {
     agentDetectionWakeRequests.remove(surfaceID)
     agentDetectionFreshProbeRequests.remove(surfaceID)
     agentDetectionFullTickRequests.remove(surfaceID)
+    agentDetectionSettleUntilBySurface.removeValue(forKey: surfaceID)
     pendingCommandFinishedBySurface.removeValue(forKey: surfaceID)
   }
 

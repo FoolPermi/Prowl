@@ -141,8 +141,9 @@ struct WorktreeTerminalStateProgramStatusTests {
   }
 
   /// One poll with the fake probe; seeds an idle screen scan so the legacy decision is definite.
-  private func detect(_ fixture: Fixture) async -> Bool {
-    await fixture.state.detectAgentState(for: fixture.surface, tabId: fixture.tabID, resolveSession: noSession)
+  private func detect(_ fixture: Fixture, now: Date = Date()) async -> Bool {
+    await fixture.state.detectAgentState(
+      for: fixture.surface, tabId: fixture.tabID, resolveSession: noSession, now: now)
   }
 
   private func bind(_ fixture: Fixture, probe: Probe) async {
@@ -215,9 +216,10 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.programStatusStoresBySurface[fixture.surfaceID]?.root?.state == .working)
   }
 
-  /// The production table (docs-ai 079 slice 3): a Claude Code root decides the
-  /// published state and delegates the schedule; a Pi root still publishes nothing.
-  @Test func productionTableVerifiesClaudeCodeAndNotPi() async {
+  /// The production table (docs-ai 079 slices 3 and 4): a Claude Code root and a Pi root
+  /// decide the published state and delegate the schedule; an unverified agent's root
+  /// still publishes nothing.
+  @Test func productionTableVerifiesClaudeCodeAndPi() async {
     let claudeProbe = Probe()
     let claude = makeFixture(support: nil, probe: claudeProbe)
     await bind(claude, probe: claudeProbe)
@@ -241,13 +243,33 @@ struct WorktreeTerminalStateProgramStatusTests {
       agent: .pi, text: "", detection: AgentScreenDetection(state: .idle, reason: .legacyDetector))
     #expect(await detect(piFixture))
     #expect(piFixture.state.surfaceAgentStates[piFixture.surfaceID]?.detectedAgent == .pi)
-    let before = piFixture.state.surfaceAgentStates[piFixture.surfaceID]
 
     piFixture.state.handleProgramStatus(report(.working, app: "pi"), surfaceID: piFixture.surfaceID)
 
-    #expect(piFixture.state.surfaceAgentStates[piFixture.surfaceID] == before)
-    #expect(piFixture.state.agentDetectionCoordinators[piFixture.surfaceID]?.isDelegated == false)
-    #expect(piFixture.state.nextScheduleAfterTick(surfaceID: piFixture.surfaceID, hasAgent: true) == .active)
+    let piPane = piFixture.state.surfaceAgentStates[piFixture.surfaceID]
+    #expect(piPane?.state == .working)
+    #expect(piPane?.decision?.reason.identifier == "osc.working")
+    #expect(piFixture.state.agentDetectionCoordinators[piFixture.surfaceID]?.isDelegated == true)
+    #expect(piFixture.state.nextScheduleAfterTick(surfaceID: piFixture.surfaceID, hasAgent: true) == .delegated)
+
+    let codexProbe = Probe()
+    let codex = makeFixture(support: nil, probe: codexProbe)
+    codexProbe.job = ForegroundJob(
+      processGroupID: getpid(),
+      processes: [
+        ForegroundProcess(pid: getpid(), parentProcessID: getppid(), name: "codex", argv0: "codex", cmdline: "codex")
+      ])
+    codex.state.lastAgentScreenScanBySurface[codex.surfaceID] = WorktreeTerminalState.AgentScreenScan(
+      agent: .codex, text: "", detection: AgentScreenDetection(state: .idle, reason: .legacyDetector))
+    #expect(await detect(codex))
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID]?.detectedAgent == .codex)
+    let before = codex.state.surfaceAgentStates[codex.surfaceID]
+
+    codex.state.handleProgramStatus(report(.working, app: "codex"), surfaceID: codex.surfaceID)
+
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID] == before)
+    #expect(codex.state.agentDetectionCoordinators[codex.surfaceID]?.isDelegated == false)
+    #expect(codex.state.nextScheduleAfterTick(surfaceID: codex.surfaceID, hasAgent: true) == .active)
   }
 
   @Test func withdrawalPublishesNothingUntilAnObserveThatStartedAfterIt() async {
@@ -294,20 +316,40 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true) == .delegated)
   }
 
-  @Test func keyPressGivesOneFullTickBeforeDelegatingAgain() async {
+  @Test func keyPressKeepsTheActiveCadenceForTheSettleWindow() async {
     let probe = Probe()
     let fixture = makeFixture(probe: probe)
     await delegate(fixture, probe: probe)
 
-    fixture.state.wakeAgentDetection(for: fixture.surface, tabId: fixture.tabID)
+    let pressedAt = Date()
+    fixture.state.wakeAgentDetection(for: fixture.surface, tabId: fixture.tabID, now: pressedAt)
     #expect(fixture.state.agentDetectionSchedules[fixture.surfaceID] == .active)
-    #expect(await detect(fixture))
+    #expect(await detect(fixture, now: pressedAt))
 
-    // The screen was read again (the memo now holds the live frame), the decision
-    // still follows the root record, and the next tick delegates again.
+    // The screen was read again (the memo now holds the live frame) and the decision
+    // still follows the root record.
     #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.text == "")
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.decision?.reason.identifier == "osc.working")
-    #expect(fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true) == .delegated)
+
+    // The one full tick is consumed, but the settle window keeps the active cadence: a
+    // tick inside it reads the screen even on the delegated schedule, so a session the
+    // key press switched (`/new`, `/resume`) is attributed from a settled frame.
+    let inside = pressedAt.addingTimeInterval(AgentDetectionSchedule.settleWindow - 0.5)
+    #expect(fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true, now: inside) == .active)
+    fixture.state.agentDetectionSchedules[fixture.surfaceID] = .delegated
+    fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] = seededScan
+    #expect(await detect(fixture, now: inside))
+    #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.text == "")
+
+    // After the window the tick delegates again and leaves the memo alone.
+    let settled = pressedAt.addingTimeInterval(AgentDetectionSchedule.settleWindow + 0.5)
+    #expect(
+      fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true, now: settled) == .delegated)
+    fixture.state.agentDetectionSchedules[fixture.surfaceID] = .delegated
+    fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] = seededScan
+    #expect(await detect(fixture, now: settled))
+    #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] == seededScan)
+    #expect(fixture.state.agentDetectionSettleUntilBySurface[fixture.surfaceID] == nil)
   }
 
   @Test func keyPressDuringADelegatedTicksSuspensionStillGetsItsFullTick() async {
@@ -333,13 +375,16 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(await tick.value)
 
     // That tick stayed delegated, so the request is still open: the loop stays on the
-    // active schedule and the next tick reads the screen before delegating again.
+    // active schedule and the next tick reads the screen before delegating again (once
+    // the press's settle window has passed).
     #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] == seededScan)
     #expect(fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true) == .active)
     fixture.state.agentDetectionSchedules[fixture.surfaceID] = .active
     #expect(await detect(fixture))
     #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.text == "")
-    #expect(fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true) == .delegated)
+    let settled = Date().addingTimeInterval(AgentDetectionSchedule.settleWindow + 1)
+    #expect(
+      fixture.state.nextScheduleAfterTick(surfaceID: fixture.surfaceID, hasAgent: true, now: settled) == .delegated)
   }
 
   @Test func probeMissLeavesDelegationForTheActiveCadence() async {

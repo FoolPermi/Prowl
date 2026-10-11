@@ -2,6 +2,11 @@ import Foundation
 
 enum AgentDetectionSchedule: Equatable, Sendable {
   static let warmWindow: TimeInterval = 30
+  /// How long a wake keeps the active cadence on a delegated pane (docs-ai 079.005): the
+  /// screen is read on the 300 ms loop for this long after a key press or CLI input, so a
+  /// session the input switched is attributed from a settled frame before the tick
+  /// delegates again.
+  static let settleWindow: TimeInterval = 3
 
   case cold
   case warm(until: Date)
@@ -13,7 +18,7 @@ enum AgentDetectionSchedule: Equatable, Sendable {
   func warmed(now: Date) -> Self {
     switch self {
     case .active, .delegated:
-      // A key press leaves delegation for one full tick so the screen is read again.
+      // A key press leaves delegation for the settle window so the screen is read again.
       return .active
     case .cold, .warm:
       return .warm(until: now.addingTimeInterval(Self.warmWindow))

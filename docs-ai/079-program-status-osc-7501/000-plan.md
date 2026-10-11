@@ -2,9 +2,9 @@
 
 | | |
 | --- | --- |
-| **Status** | Planned (slices 1–3 implemented) |
+| **Status** | Implemented — see [001-action.md](001-action.md) |
 | **Anchor date** | 2026-10-10 |
-| **Primary PRs** | #887 (slice 1); #893 (slice 2, [003-generic-provider.md](003-generic-provider.md)); #895 (slice 3, [004-claude-verified.md](004-claude-verified.md)); slice 4 to fill in as it merges |
+| **Primary PRs** | #887 (slice 1, [002-fork-action-and-bridge.md](002-fork-action-and-bridge.md)); #893 (slice 2, [003-generic-provider.md](003-generic-provider.md)); #895 (slice 3, [004-claude-verified.md](004-claude-verified.md)); #896 (slice 4, [005-pi-verified.md](005-pi-verified.md)) |
 | **Related** | [078-ghostty-1-4-upgrade-rehearsal](../078-ghostty-1-4-upgrade-rehearsal/000-plan.md), [068-agent-state-providers](../068-agent-state-providers/architecture.md), [064-agent-completion-signals](../064-agent-completion-signals/000-plan.md), `docs/components/agent-detection.md`, [producer-baseline.md](producer-baseline.md), [#891](https://github.com/onevcat/Prowl/issues/891) (legacy background-work semantics, deferred) |
 
 ## Background
@@ -393,6 +393,7 @@ The Pi screen rules and the managed `-e prowl-hooks.ts` extension are untouched.
 | wrapper writing the root | another `app` → fenced; no `app` → ineligible; `app=pi` → trusted |
 | Oh My Pi | separate agent, `app` unknown, stays `.unverified` |
 | `PI_PROGRAM_STATUS=0`, < 1.1.0 | no reports → legacy screen |
+| `/new`, `/resume` (session rotation) | OSC never supplies identity and Pi has no pid registry, so the session stays the transcript scan plus fingerprint. A wake keeps the active cadence for a 3 s settle window (079.005, option (c) of 004's review finding 1) so the rotated session is read from a settled frame rather than the frame of the key press |
 
 Acceptance: launch → `osc.idle` on the first probe; prompt → `osc.working` → `osc.done` →
 Done → view → Idle; Esc → `osc.idle`; gate extension confirm → `osc.blocked.permission`;
@@ -410,7 +411,7 @@ baseline rows, amendment `005-pi-verified.md`.
 | 1 | #887 | fork action, Swift copy, harness, baselines | landed |
 | 2 | #893 ([003](003-generic-provider.md)) | store, machine, coordinator, delegated schedule, command-finished release, all `.unverified` | `make check`, `make test`, `make build-app`; a Debug run with Claude and Pi shows shadow disagreements only where expected; legacy-only regression checks for the fast release (an agent that never reports, kill -9 and normal exit, relaunch in the same pane, `wait --until exit`, a pending dispatch across the release) |
 | 3 | #895 ([004](004-claude-verified.md)) | Claude `.verified` | acceptance list above replayed; no case where OSC was wrong and the legacy decision right; CPU recorded |
-| 4 | — | Pi `.verified` | same, for Pi |
+| 4 | #896 ([005](005-pi-verified.md)) | Pi `.verified` | same, for Pi |
 
 PRs merge in order: slice 2 alone, then slices 3 and 4 from `main` in parallel (their
 acceptance runs on merged slice 2 code). `001-action.md` is written when slice 4 lands.
@@ -534,3 +535,5 @@ pane) is expected to be noise; slices 3 and 4 measure it.
   revision bump on `commandFinished`, last scan text for the delegated resolver, owner
   generation keyed by `launchProcessID` alone).
 - Updated 2026-10-11: slice 3 implemented (Claude Code `.verified`; the acceptance list replayed in an isolated Debug instance with Claude Code 2.1.296, CPU compared with the slice 2 baseline, the boundary rows for interrupt, subagents, background agents, and `/clear` corrected from the observations; the session identity moved to the pid registry after the review finding) — see [004-claude-verified.md](004-claude-verified.md)
+- Updated 2026-10-11: slice 4 implemented (Pi `.verified`; the acceptance list replayed in an isolated Debug instance with Pi 1.1.0, CPU compared with the slice 2 baseline; a 3 s settle window after each wake keeps the screen reads that attribute an in-process `/new` or `/resume`) — see [005-pi-verified.md](005-pi-verified.md)
+- Updated 2026-10-11: slices 3 and 4 merged; the outcome of the whole entry is in [001-action.md](001-action.md)
