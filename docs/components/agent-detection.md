@@ -245,8 +245,9 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
    `/resume` without any screen text, within the resolver's 5 s result cache plus one
    delegated tick (about 7 s) while the registry stays readable, so a delegated pane
    tracks a rotation too. A transient read failure keeps the last registry identity
-   for three resolutions before the transcript scan and fingerprint take over; they
-   remain the fallback for versions without the registry. Background daemon/remote sessions are not
+   for three poll resolutions before the transcript scan and fingerprint take over
+   (`agents read` reports only current evidence meanwhile); they remain the fallback
+   for versions without the registry. Background daemon/remote sessions are not
    supported by this adapter. A manually relocated config root must be supplied
    through a Prowl launch profile; shell-only overrides can fall back to screen.
    Claude Code 2.1.295 and later also reports its state through
