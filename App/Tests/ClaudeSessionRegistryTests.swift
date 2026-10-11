@@ -142,4 +142,67 @@ struct ClaudeSessionRegistryTests {
     #expect(rotated.session?.id == sessionB)
     #expect(rotated.isFresh == true)
   }
+
+  /// A registry that named the session once is authoritative for the process generation:
+  /// a transient read failure keeps that identity for three uncached resolutions instead of
+  /// promoting a fingerprint guess in its place (which would rotate the evidence epoch), and
+  /// only then does the transcript scan take over.
+  @Test func transientRegistryFailureHoldsTheExactSessionBeforeTheScanTakesOver() async throws {
+    let pid = getpid()
+    let startedAt = try #require(ProcessDetection.processStartDate(pid: pid))
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+    let procStart = formatter.string(from: startedAt)
+    let home = FileManager.default.temporaryDirectory
+      .appending(path: "prowl-claude-hold-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let cwd = home.appending(path: "work", directoryHint: .isDirectory)
+    let project = home.appending(path: ".claude/projects/\(AgentSessionProfile.alphanumericDashed(cwd.path))")
+    try FileManager.default.createDirectory(
+      at: home.appending(path: ".claude/sessions"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: cwd, withIntermediateDirectories: true)
+    // Two process-lifetime transcripts; the stale frame matches the outgoing one (B).
+    let outgoingText = "outgoing session banana text for the fingerprint"
+    try Data("{\"content\":\"first session apple text, nothing alike\"}\n".utf8)
+      .write(to: project.appending(path: "\(sessionA).jsonl"))
+    try Data("{\"content\":\"\(outgoingText)\"}\n".utf8).write(to: project.appending(path: "\(sessionB).jsonl"))
+    let registryURL = home.appending(path: ".claude/sessions/\(pid).json")
+    let record = try registry(sessionID: sessionA, pid: Int(pid), procStart: procStart, cwd: cwd.path)
+    try record.write(to: registryURL)
+
+    let resolver = AgentSessionResolver(
+      homeDirectory: home, tuiOpenFilePaths: { _ in [] }, daemonBinding: { _, _, _ in .unavailable })
+    let identified = IdentifiedAgentProcess(
+      agent: .claude, name: "claude",
+      process: ForegroundProcess(pid: pid, name: "claude", argv0: nil, cmdline: nil))
+    let now = Date()
+    func resolve(after seconds: TimeInterval) async -> AgentSessionResolution {
+      await resolver.resolve(
+        identified: identified, workingDirectory: cwd, activeText: outgoingText,
+        now: now.addingTimeInterval(seconds))
+    }
+    let first = await resolve(after: 0)
+    #expect(first.session?.id == sessionA)
+    #expect(first.session?.confidence == .exact)
+
+    try FileManager.default.removeItem(at: registryURL)
+    for seconds in [6.0, 12.0, 18.0] {
+      let held = await resolve(after: seconds)
+      #expect(held.session?.id == sessionA, "held at \(seconds) s")
+      #expect(held.session?.confidence == .exact, "held at \(seconds) s")
+    }
+    // The fourth consecutive miss ends the hold: the scan attributes the stale frame to B.
+    let fallen = await resolve(after: 24)
+    #expect(fallen.session?.id == sessionB)
+    #expect(fallen.session?.source == .transcriptMatch)
+
+    // A readable registry is authoritative again at once.
+    try record.write(to: registryURL)
+    let restored = await resolve(after: 30)
+    #expect(restored.session?.id == sessionA)
+    #expect(restored.session?.confidence == .exact)
+  }
 }
