@@ -114,10 +114,13 @@ confirmed the four fixes against the code with no new finding.
 - **Isolated homes hide the registry.** With `CFFIXED_USER_HOME` the native provider reads
   `<home>/.claude/sessions`, which is empty, so slice 2's runs saw `screen.logUnavailable`
   where the plan expected `native.*`; linking the real `sessions` directory into the
-  isolated home restores the `native.*` fallback. The session resolver likewise needs the
-  pane's cwd to be the real path (`/private/tmp/...`, not `/tmp/...`) to find the
-  transcripts, and a cwd shared by several Claude sessions defeats its unique-candidate
-  fallback; neither is specific to this slice.
+  isolated home restores the `native.*` fallback. The transcript scan, on the other hand,
+  cannot resolve any session for a pane under `/tmp` (found in slice 4's replay, 005): the
+  resolver's `workingDirectoryVariants` derives the physical path with
+  `URL.resolvingSymlinksInPath()`, which strips `/private`, so it scans `-tmp-x` while
+  Claude writes `-private-tmp-x`. That is why this slice's replay showed no transcript
+  session before the registry change; the registry identity does not depend on the cwd
+  and resolved in the same instance. Pre-existing on `main`, left for a follow-up.
 - **Undo-close under a locked screen.** A posted ⌘Z never reached Ghostty's keybinding while
   `loginwindow` was frontmost; `prowl key <other pane> cmd-z` within the undo timeout did.
 
