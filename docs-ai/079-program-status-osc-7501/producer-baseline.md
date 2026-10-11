@@ -58,11 +58,17 @@ new directory shows the trust dialog.
 | Tool running | `state=working:app=claude-code:msg=<base64>` (msg was the tool description, e.g. "Listing files in current directory with details") |
 | Bash approval prompt | `state=blocked:app=claude-code:kind=permission:msg=<base64 "approve Bash: touch probe-touch.txt">` |
 | Turn finished | `state=done:app=claude-code` |
-| Exit (trust dialog declined, or quit) | `state=clear` |
+| Background subagent (`run_in_background`, 2026-10-11) | root `state=working` on submit; when the Agent tool starts, root `state=working:app=claude-code:msg=<base64 tool description>` and a child record `state=working:app=claude-code:id=<agent id>:title=<base64 description>` in the same instant (0.05 s before the `SubagentStart` hook); root `state=working` re-sent without `msg` 1.1 s after the `Stop` hook of Claude's own turn, while the TUI shows "Waiting for 1 background agent to finish"; `state=clear:id=<agent id>` when the agent finishes (0.02 s before `SubagentStop`); the result is then auto-submitted as a new turn (`UserPromptSubmit`, `Stop`) and only after it root `state=done` |
+| `/clear` (2026-10-11) | `state=working` then `state=idle` 0.04 s later; no `clear` |
+| In-process `/resume`, session picked (2026-10-11) | `state=idle:app=claude-code` 0.1 s after the selection; no `clear` |
+| Exit (trust dialog declined, or quit) | `state=clear` (`/exit`: a momentary `working`, then `clear`, repeated up to three times) |
 
-Not observed: a report for the trust dialog itself; child records (`id=`) — no subagent
-scenario was run; `question`/`auth` kinds. `ls -la` ran without an approval prompt (read-only
-command), so a write command is needed to reproduce `blocked`.
+Not observed by the harness: a report for the trust dialog itself; `question`/`auth` kinds
+(both observed inside Prowl, see below); a child `blocked` record. `ls -la` ran without an
+approval prompt (read-only command), so a write command is needed to reproduce `blocked`.
+Child records carry `title` (the agent description) rather than `msg`; the root never
+leaves `working` while a child is live, so OSC alone cannot tell "the root's own turn
+ended, only children remain" (the `Stop` hook and the screen row can).
 
 ## Pi 1.1.0 (2026-10-10, macOS, onevcat's settings, model gpt-6-astra)
 
@@ -102,7 +108,40 @@ pane was on. A producer is not flipped to `.verified` before its table is comple
 
 ### Claude Code
 
-Pending (slice 3).
+Replayed on 2026-10-11 with Claude Code 2.1.296 against the slice 3 build (Claude
+`.verified`) in an isolated Debug instance (`CFFIXED_USER_HOME`, own socket, the real
+`~/.claude/sessions` and `~/.claude/projects` linked read-only into the isolated home so
+the native fallback is observable). `detection_reason` and `screen_reason` are what
+`prowl agents --json` reported; timings are CLI-polled (each includes the `prowl send`
+round trip and a poll interval of 250 ms) and are for ordering, not latency guarantees.
+"Delegated" means `screen_reason` was `screen.delegated`, i.e. the pane was on the 2 s
+probe-only schedule.
+
+| Scenario | `detection_reason` (schedule) | Notes |
+| --- | --- | --- |
+| Launch, trust dialog shown | `screen.logUnavailable` / `claude.blockedPrompt`, Blocked (active) | no report before the dialog is answered, as in the harness |
+| Trust dialog accepted, TUI mounted | `osc.idle` (delegated) | 620 ms after the keystroke; the pane showed Done, which `osc.idle` cannot earn: the legacy 300 ms poll crossed Blocked → Idle on the mounting TUI before the report arrived (see 004) |
+| Prompt submitted | `osc.working` (delegated) | 90–340 ms after `prowl send` |
+| Tool running (`ls`, `touch`) | `osc.working` (delegated) | `msg` is neither logged nor published |
+| Bash approval prompt | `osc.blocked.permission` (delegated) | `prowl agents read` reads the fresh screen and fills `blocker.text` from the dialog |
+| Approval accepted | `osc.working` → `osc.done` (delegated) | Done badge while unviewed; viewing the pane turned it into Idle within 76 ms |
+| AskUserQuestion | `osc.blocked.question` (delegated) | not observed by the harness; answering gives `osc.working` → `osc.done` |
+| Foreground subagent (Agent tool) | `osc.working` → `osc.done` (delegated) | the pane follows the root; child records are not observable through the CLI |
+| Background subagent (`run_in_background`) | `osc.working` (delegated) for the whole wait, then `osc.done` | 2.1.296 keeps the turn open ("Waiting for 1 background agent to finish"); the fresh screen rule `claude.backgroundWork` agrees |
+| `/compact` | `osc.working` (delegated) for ~36 s, then `osc.done` | the fresh screen rule `claude.spinner` agrees |
+| Escape during a turn | `osc.idle` (delegated) | 96 ms after the key; an earlier unviewed badge stays |
+| `/clear` | `osc.working` then `osc.idle` (delegated) | same PID; `working` lasted one poll. With the registry as the session (2026-10-11): the roster's `session` moved to the new id (`process_log` / `exact`, with the new transcript's path) 2.1 s after the command with no further input |
+| In-process `/resume` to an earlier session of the same process (2026-10-11) | `osc.idle` (delegated) | no further input after the picker's Enter: the roster's `session` moved back to the resumed id with its transcript path 4.2 s later; the registry agreed. Before the registry change this case was stuck until the next input |
+| Invalid `ANTHROPIC_API_KEY` accepted at launch | `osc.idle` on mount, then `osc.blocked.auth` (delegated) on the first prompt | held until the user acts; the fresh screen is an idle composer with the error line |
+| `/exit` | entry released | 793 ms and 545–735 ms in later runs, CLI-polled; `main` took 1.8–2.1 s |
+| `kill -9` | entry released | 394 ms, CLI-polled |
+| Relaunch in the same pane | `screen.logUnavailable` / `fallback.noRuleMatched` for the banner, then `osc.idle` (delegated) | 955 ms after `prowl send`; its own report, no predecessor state |
+| Close and undo | `osc.done` (delegated) on the restored pane | the retained store was pulled back with no new report; undo through `prowl key <pane> cmd-z` restored the pane in 73 ms |
+| `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` | `native.idle` / `claude.idleComposer`, `native.working` / `claude.spinner` (active) | the registry path, unchanged; without the registry link the reason is `screen.logUnavailable` |
+| Agent Profile launch (`Claude Test`: sonnet, bypass permissions, managed hooks) | `osc.working` → `osc.done` (delegated) | launch dispatch receipt `succeeded`; `agents wait --until idle` and a re-dispatch resolved; `signals.channels` kept `hook_claude` at `exact` |
+
+Not exercised: `kind=auth` from a real OAuth login wait, child `blocked` records (no
+subagent asked for a permission during the replay), and `CLAUDE_CODE_SESSION_KIND=bg`.
 
 ### Pi
 
