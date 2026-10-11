@@ -13,7 +13,12 @@ fallback for Pi versions that do not report and for `PI_PROGRAM_STATUS=0`.
 and later writes (`app=pi`) is the first-priority state evidence, applied the moment the
 report arrives (`osc.working`, `osc.blocked.<kind>`, `osc.idle`, `osc.done`, `osc.error`);
 while it decides, the detection loop runs on the delegated schedule (process probe and
-session resolution every 2 s, no screen read) and `screen_reason` is `screen.delegated`.
+session resolution every 2 s, no screen read) and `screen_reason` is `screen.delegated`,
+except for the 3 s settle window after a key press or CLI input, when the 300 ms loop
+reads the screen again (docs-ai 079.005). Pi has no pid registry, so its session is still
+the transcript scan over `~/.pi/agent/sessions/<cwd>/` plus the screen fingerprint; the
+settle window is what lets a `/new` or `/resume` rotation be attributed from the frame it
+settles into instead of the frame of the key press that caused it.
 Pi sends `idle` within about 10 ms of the query echo, before the first probe has bound the
 agent, so the report wakes the probe and the first observe pulls the store snapshot. A
 `clear` (ctrl+d) withdraws the authority and the next poll reads the screen again with the
@@ -49,6 +54,7 @@ is attributed to the pane's Pi.
 | ctrl+d, `kill -9` | the entry is released by the fresh probe after OSC 133 (tens to hundreds of milliseconds through the CLI) |
 | relaunch in the same pane | one `legacy.detector` poll, then the new process's own `osc.idle`; the predecessor's records are fenced by arrival time |
 | `PI_PROGRAM_STATUS=0`, < 1.1.0 | no reports: `legacy.detector` from the screen rules, unchanged |
+| `/new`, in-process `/resume` (2026-10-11, settle window) | `osc.idle` once the session is picked, never `clear`; the pane's session is the transcript scan plus fingerprint, read from the settled frame inside the 3 s window: a new session's transcript resolved 1.1 s after its first prompt, and a `/resume` back to an earlier session moved the roster 2.5 s after the picker's Enter with no further input |
 | Agent Profile launch (managed `-e prowl-hooks.ts`) | the Profile keeps its exact hook channel while OSC supplies the pane state and takes part in idle admission; the kickoff and a later assignment completed through explicit dispatch receipts, and the idle wait and the re-dispatch admission succeeded |
 | `pi-subagents` running after root `done` | not exercised in the replay (root-only rule by code: the pane reads Idle; the fallback `hasPiRunningAsyncSubagentCard` applies only without reports) |
 

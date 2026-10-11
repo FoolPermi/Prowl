@@ -393,6 +393,7 @@ The Pi screen rules and the managed `-e prowl-hooks.ts` extension are untouched.
 | wrapper writing the root | another `app` → fenced; no `app` → ineligible; `app=pi` → trusted |
 | Oh My Pi | separate agent, `app` unknown, stays `.unverified` |
 | `PI_PROGRAM_STATUS=0`, < 1.1.0 | no reports → legacy screen |
+| `/new`, `/resume` (session rotation) | OSC never supplies identity and Pi has no pid registry, so the session stays the transcript scan plus fingerprint. A wake keeps the active cadence for a 3 s settle window (079.005, option (c) of 004's review finding 1) so the rotated session is read from a settled frame rather than the frame of the key press |
 
 Acceptance: launch → `osc.idle` on the first probe; prompt → `osc.working` → `osc.done` →
 Done → view → Idle; Esc → `osc.idle`; gate extension confirm → `osc.blocked.permission`;

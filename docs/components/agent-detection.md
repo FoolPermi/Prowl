@@ -316,9 +316,12 @@ changes nothing, so background agents and subagents never keep a pane Working or
 `agents wait --until idle`, dispatch, or workflows. `done` and `error` may show the Done
 badge; `idle` never does (it is sent at mount, on interrupt, and on a session reset).
 While the root record decides, Prowl stops reading the screen and the native/log files
-and polls only the process every 2 s; `screen_reason` reports `screen.delegated`. When
-the record is cleared or the command finishes, the legacy paths take over again with
-their usual reasons; there is no silence timeout.
+and polls only the process every 2 s; `screen_reason` reports `screen.delegated`. A key
+press or CLI input puts the pane back on the 300 ms loop, with screen reads, for about
+3 s, so a session the input switched (`/new`, `/resume`) is attributed from the frame it
+settles into before the tick delegates again. When the record is cleared or the command
+finishes, the legacy paths take over again with their usual reasons; there is no silence
+timeout.
 
 Producers that never report (older versions, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`,
 `PI_PROGRAM_STATUS=0`) get today's screen and provider detection unchanged. The
@@ -505,7 +508,8 @@ completion remain separate protocols.
 
 A key press, a finished command, an OSC 7501 report for a pane without a detected
 agent, and the clearing of a record that was deciding the state each wake the loop
-immediately instead of waiting for the next tick.
+immediately instead of waiting for the next tick, and a wake keeps the 300 ms cadence
+for about 3 s before a verified producer's pane delegates again.
 
 The heavier process probe is throttled (cached ≈ 0.75 s per process group unless
 something changes) so many panes don't add up to high CPU. Status indicators redraw on a
