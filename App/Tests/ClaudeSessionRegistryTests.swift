@@ -205,4 +205,67 @@ struct ClaudeSessionRegistryTests {
     #expect(restored.session?.id == sessionA)
     #expect(restored.session?.confidence == .exact)
   }
+
+  /// The hold is the poll's policy. A fresh read (`agents read`) during a registry outage
+  /// reports current evidence only — the frame's fingerprint, or nothing — and neither
+  /// consumes the hold's budget nor overwrites the held identity.
+  @Test func freshReadDuringARegistryOutageReportsCurrentEvidenceAndKeepsTheHold() async throws {
+    let pid = getpid()
+    let startedAt = try #require(ProcessDetection.processStartDate(pid: pid))
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+    let procStart = formatter.string(from: startedAt)
+    let home = FileManager.default.temporaryDirectory
+      .appending(path: "prowl-claude-fresh-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let cwd = home.appending(path: "work", directoryHint: .isDirectory)
+    let project = home.appending(path: ".claude/projects/\(AgentSessionProfile.alphanumericDashed(cwd.path))")
+    try FileManager.default.createDirectory(
+      at: home.appending(path: ".claude/sessions"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: cwd, withIntermediateDirectories: true)
+    let outgoingText = "outgoing session banana text for the fingerprint"
+    try Data("{\"content\":\"first session apple text, nothing alike\"}\n".utf8)
+      .write(to: project.appending(path: "\(sessionA).jsonl"))
+    try Data("{\"content\":\"\(outgoingText)\"}\n".utf8).write(to: project.appending(path: "\(sessionB).jsonl"))
+    let registryURL = home.appending(path: ".claude/sessions/\(pid).json")
+    try registry(sessionID: sessionA, pid: Int(pid), procStart: procStart, cwd: cwd.path).write(to: registryURL)
+
+    let resolver = AgentSessionResolver(
+      homeDirectory: home, tuiOpenFilePaths: { _ in [] }, daemonBinding: { _, _, _ in .unavailable })
+    let identified = IdentifiedAgentProcess(
+      agent: .claude, name: "claude",
+      process: ForegroundProcess(pid: pid, name: "claude", argv0: nil, cmdline: nil))
+    let now = Date()
+    func poll(after seconds: TimeInterval) async -> AgentSessionResolution {
+      await resolver.resolve(
+        identified: identified, workingDirectory: cwd, activeText: outgoingText,
+        now: now.addingTimeInterval(seconds))
+    }
+    func fresh(_ text: String, after seconds: TimeInterval) async -> AgentSessionResolution {
+      await resolver.resolveFresh(
+        identified: identified, workingDirectory: cwd, activeText: text, now: now.addingTimeInterval(seconds))
+    }
+    #expect(await poll(after: 0).session?.id == sessionA)
+    try FileManager.default.removeItem(at: registryURL)
+
+    // Current evidence: the frame matches B, so a fresh read says B; an ambiguous frame says nothing.
+    let current = await fresh(outgoingText, after: 1)
+    #expect(current.session?.id == sessionB)
+    #expect(current.session?.source == .transcriptMatch)
+    #expect(await fresh("", after: 2).session == nil)
+
+    // The poll still holds A: the fresh reads neither replaced the held identity nor spent
+    // its three misses (three more fresh reads inside the outage, then the third poll miss).
+    #expect(await poll(after: 6).session?.id == sessionA)
+    for seconds in [7.0, 8.0, 9.0] {
+      #expect(await fresh(outgoingText, after: seconds).session?.id == sessionB)
+    }
+    #expect(await poll(after: 12).session?.id == sessionA)
+    #expect(await poll(after: 18).session?.id == sessionA)
+    #expect(await poll(after: 18).session?.confidence == .exact)
+    #expect(await poll(after: 24).session?.id == sessionB)
+  }
 }

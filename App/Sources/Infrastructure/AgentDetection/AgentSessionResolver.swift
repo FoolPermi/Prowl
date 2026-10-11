@@ -484,6 +484,14 @@ actor AgentSessionResolver {
     if uncached.pidKeyedMissed, let held = cached?.session, held.source == .processLog, held.confidence == .exact,
       let misses = cached?.pidKeyedMisses, misses < Self.pidKeyedHoldMisses
     {
+      // The hold is the poll's policy. A fresh read (`agents read`) exports current
+      // evidence only — the frame's exact or high match, or nothing — and leaves the
+      // cache entry alone so it neither spends the hold's budget nor replaces the
+      // held identity.
+      if bypassResultCache {
+        let current = uncached.session.flatMap { $0.confidence == .medium ? nil : $0 }
+        return AgentSessionResolution(session: current, isFresh: true)
+      }
       session = held
       pidKeyedMisses = misses + 1
     }
