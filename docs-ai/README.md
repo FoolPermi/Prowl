@@ -105,7 +105,7 @@ keep the old paths. Use this table to find a file that an old entry names:
 | 020 | [observability](020-observability/000-plan.md) | 2026-04-18 | Sentry + PostHog wiring; the App-Hang enable→tune→remove arc |
 | 021 | [sparkle-update-ux](021-sparkle-update-ux/000-plan.md) | 2026-04-18 | Update badge, Sparkle 2.9.2, background downloads, confirm-install |
 | 022 | [tab-title-and-icon](022-tab-title-and-icon/000-plan.md) | 2026-04-18 | Tab titles/icons: manual, auto-detected, pinned, persisted |
-| 023 | [shelf-mode](023-shelf-mode/000-plan.md) | 2026-04-21 | Shelf stacked-book mode + jank investigation |
+| 023 | [shelf-mode](023-shelf-mode/000-plan.md) | 2026-04-21 | Shelf mode, jank investigation, and spine animation boundary |
 | 024 | [canvas-interaction-evolution](024-canvas-interaction-evolution/000-plan.md) | 2026-04-25 | Canvas v2 UX: zoom/pan, expand-in-place, spatial navigation |
 | 025 | [repo-identity-appearance](025-repo-identity-appearance/000-plan.md) | 2026-04-27 | Per-repo icon/color/title identity |
 | 026 | [sidebar-container-refactor](026-sidebar-container-refactor/000-plan.md) | 2026-05-03 | Sidebar container/presentation refactor |
