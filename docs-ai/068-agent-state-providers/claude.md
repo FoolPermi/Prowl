@@ -14,6 +14,12 @@ adding a duplicate production work ledger.
 `ClaudeRuntimeDecoder` validates PID, UTC process start, session UUID, absolute cwd,
 interactive Darwin kind, timestamps, and supported status. Exact OS generation is
 checked before and after acquisition. Older snapshots suspend authority.
+`ClaudeSessionRegistry` reads the same record for the pane's session identity
+(`process_log`, `exact`, docs-ai 079.004): the identity check is the pid, the start
+second, the interactive Darwin kind, and the session UUID, so a status the decoder does
+not know still yields the identity, and the transcript path is reported once the first
+prompt has created it. The transcript scan and fingerprint are the fallback for versions
+without the registry.
 
 `busy` and `shell` map to Working, `waiting` to Blocked, and `idle` to Idle. Native
 state includes observed assigned children and background shell work, including work
@@ -64,7 +70,8 @@ recorded in [producer-baseline.md](../079-program-status-osc-7501/producer-basel
 | background subagent (`run_in_background`) | Claude Code 2.1.296 keeps the turn open (`✻ Waiting for 1 background agent to finish`) and the root stays `working`; the fallback rule `claude.backgroundWork` reads the same frame as Working, so the two paths agree and a background agent does keep the pane Working until Claude ends the turn |
 | `/compact` | `osc.working` for the duration of the compaction, then `osc.done` (the screen rule `claude.spinner` agrees) |
 | interrupt (Esc) | `osc.idle`; an unviewed Done badge from an earlier turn is neither earned nor cleared |
-| `/clear` | same PID; `osc.working` for a moment, then `osc.idle`; the public session is re-resolved only against the screen text read at the last key press (see the known limitation in 079.004) |
+| `/clear` | same PID; `osc.working` for a moment, then `osc.idle`, never `clear`; the registry's new `sessionId` becomes the pane's session within the resolver's 5 s result cache plus one delegated tick, with no screen text involved (079.004) |
+| in-process `/resume` | `osc.idle` once the session is picked, never `clear`; the pane's session rotates through the registry the same way |
 | invalid API key accepted at launch | `osc.blocked.auth` on the first prompt (`Invalid API key`), held until the user acts; the legacy screen rules read the same frame as an idle composer |
 | `/exit`, `kill -9` | the entry is released by the fresh probe after OSC 133 (hundreds of milliseconds through the CLI, versus about two seconds before 079) |
 | relaunch in the same pane | the new process gets its own `osc.idle`; the predecessor's records are fenced by arrival time |

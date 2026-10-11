@@ -240,7 +240,11 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
    means **Idle**. Process generation is checked before and after each read.
    `/new` and resume use the registry's current session. Two processes sharing a
    transcript retain independent states. Missing, partial, stale, or unsupported
-   records fall back to the screen. Background daemon/remote sessions are not
+   records fall back to the screen. The registry's `sessionId` is also the pane's
+   session identity (`process_log`, `exact`): it follows `/clear` and an in-process
+   `/resume` within the resolver's 5 s result cache without any screen text, so a
+   delegated pane tracks a rotation too; the transcript scan and fingerprint remain
+   the fallback for versions without the registry. Background daemon/remote sessions are not
    supported by this adapter. A manually relocated config root must be supplied
    through a Prowl launch profile; shell-only overrides can fall back to screen.
    Claude Code 2.1.295 and later also reports its state through
