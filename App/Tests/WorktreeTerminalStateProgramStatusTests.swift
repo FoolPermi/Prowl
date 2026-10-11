@@ -216,9 +216,22 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.programStatusStoresBySurface[fixture.surfaceID]?.root?.state == .working)
   }
 
-  /// The production table (docs-ai 079 slice 4): a Pi root decides the published
-  /// state and delegates the schedule; a Claude root still publishes nothing here.
-  @Test func productionTableVerifiesPiAndNotClaude() async {
+  /// The production table (docs-ai 079 slices 3 and 4): a Claude Code root and a Pi root
+  /// decide the published state and delegate the schedule; an unverified agent's root
+  /// still publishes nothing.
+  @Test func productionTableVerifiesClaudeCodeAndPi() async {
+    let claudeProbe = Probe()
+    let claude = makeFixture(support: nil, probe: claudeProbe)
+    await bind(claude, probe: claudeProbe)
+
+    claude.state.handleProgramStatus(report(.working), surfaceID: claude.surfaceID)
+
+    let claudePane = claude.state.surfaceAgentStates[claude.surfaceID]
+    #expect(claudePane?.state == .working)
+    #expect(claudePane?.decision?.reason.identifier == "osc.working")
+    #expect(claude.state.agentDetectionCoordinators[claude.surfaceID]?.isDelegated == true)
+    #expect(claude.state.nextScheduleAfterTick(surfaceID: claude.surfaceID, hasAgent: true) == .delegated)
+
     let piProbe = Probe()
     let piFixture = makeFixture(support: nil, probe: piProbe)
     piProbe.job = ForegroundJob(
@@ -239,16 +252,24 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(piFixture.state.agentDetectionCoordinators[piFixture.surfaceID]?.isDelegated == true)
     #expect(piFixture.state.nextScheduleAfterTick(surfaceID: piFixture.surfaceID, hasAgent: true) == .delegated)
 
-    let claudeProbe = Probe()
-    let claude = makeFixture(support: nil, probe: claudeProbe)
-    await bind(claude, probe: claudeProbe)
-    let before = claude.state.surfaceAgentStates[claude.surfaceID]
+    let codexProbe = Probe()
+    let codex = makeFixture(support: nil, probe: codexProbe)
+    codexProbe.job = ForegroundJob(
+      processGroupID: getpid(),
+      processes: [
+        ForegroundProcess(pid: getpid(), parentProcessID: getppid(), name: "codex", argv0: "codex", cmdline: "codex")
+      ])
+    codex.state.lastAgentScreenScanBySurface[codex.surfaceID] = WorktreeTerminalState.AgentScreenScan(
+      agent: .codex, text: "", detection: AgentScreenDetection(state: .idle, reason: .legacyDetector))
+    #expect(await detect(codex))
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID]?.detectedAgent == .codex)
+    let before = codex.state.surfaceAgentStates[codex.surfaceID]
 
-    claude.state.handleProgramStatus(report(.working), surfaceID: claude.surfaceID)
+    codex.state.handleProgramStatus(report(.working, app: "codex"), surfaceID: codex.surfaceID)
 
-    #expect(claude.state.surfaceAgentStates[claude.surfaceID] == before)
-    #expect(claude.state.agentDetectionCoordinators[claude.surfaceID]?.isDelegated == false)
-    #expect(claude.state.nextScheduleAfterTick(surfaceID: claude.surfaceID, hasAgent: true) == .active)
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID] == before)
+    #expect(codex.state.agentDetectionCoordinators[codex.surfaceID]?.isDelegated == false)
+    #expect(codex.state.nextScheduleAfterTick(surfaceID: codex.surfaceID, hasAgent: true) == .active)
   }
 
   @Test func withdrawalPublishesNothingUntilAnObserveThatStartedAfterIt() async {

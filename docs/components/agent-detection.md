@@ -249,9 +249,25 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
    means **Idle**. Process generation is checked before and after each read.
    `/new` and resume use the registry's current session. Two processes sharing a
    transcript retain independent states. Missing, partial, stale, or unsupported
-   records fall back to the screen. Background daemon/remote sessions are not
+   records fall back to the screen. The registry's `sessionId` is also the pane's
+   session identity (`process_log`, `exact`): it follows `/clear` and an in-process
+   `/resume` without any screen text, within the resolver's 5 s result cache plus one
+   delegated tick (about 7 s) while the registry stays readable, so a delegated pane
+   tracks a rotation too. A transient read failure keeps the last registry identity
+   for three poll resolutions before the transcript scan and fingerprint take over
+   (`agents read` reports only current evidence meanwhile); they remain the fallback
+   for versions without the registry. Background daemon/remote sessions are not
    supported by this adapter. A manually relocated config root must be supplied
    through a Prowl launch profile; shell-only overrides can fall back to screen.
+   Claude Code 2.1.295 and later also reports its state through
+   [program status](#program-status-osc-7501). That root record outranks the
+   registry and the screen, and the native state provider does not sample the
+   registry while it decides (the session resolver still reads it for identity). The
+   registry and the screen rules are the fallback: Claude sends nothing before the
+   trust dialog is answered, so that prompt is still the screen blocker, and a
+   cleared record hands the pane back to them. A finished command (OSC 133) only
+   wakes a fresh probe: the same Claude keeps its record and its authority (a
+   nested shell's prompt), and a confirmed exit releases the entry.
 
 For diagnostics and sanitized regression captures, `prowl read --source detection`
 returns the exact active-screen buffer used by stage 2. It is explicitly requested
@@ -262,7 +278,8 @@ because it can differ from the visible viewport when a pane is scrolled; the def
 the final state decision and `screen_reason` for the screen rule. Codex can report
 `log.openWork`, `log.turnEnded`, or a `screen.*` fallback reason; `raw_state` remains
 the latest screen classification. A current blocker reports its screen-rule ID.
-Claude reports `native.working`, `native.blocked`, or `native.idle`; a fresh screen
+Claude reports an `osc.*` reason while its program status root record decides, and
+otherwise `native.working`, `native.blocked`, or `native.idle`; a fresh screen
 blocker can retain its screen-rule ID. Screen-only runtimes keep their existing rule identifiers. An ordinary profile miss
 reports `fallback.noRuleMatched`; unmigrated classifiers report `legacy.detector`,
 which is also Pi's fallback reason when no root record decides.
@@ -304,8 +321,8 @@ in the app, not a setting:
 
 | Support | Meaning |
 | --- | --- |
-| unverified | Records are stored and resolved, but only compared with the live decision; disagreements are logged (`AgentDetection` category). Every agent except Pi today (Claude Code flips in its own change). |
-| verified | The root record is the first-priority state evidence, applied the moment the report arrives. Pi (1.1.0 and later, `app=pi`). |
+| unverified | Records are stored and resolved, but only compared with the live decision; disagreements are logged (`AgentDetection` category). Every agent except Claude Code and Pi today. |
+| verified | The root record is the first-priority state evidence, applied the moment the report arrives. Claude Code (2.1.295 and later, `app=claude-code`) and Pi (1.1.0 and later, `app=pi`). |
 
 For a verified producer the pane follows the **root** record only: `working` → Working
 (`osc.working`), `blocked` → Blocked (`osc.blocked.<kind>`, `unspecified` without a
@@ -315,13 +332,15 @@ idle waits, because a subagent's prompt needs an answer; a child that is `workin
 changes nothing, so background agents and subagents never keep a pane Working or block
 `agents wait --until idle`, dispatch, or workflows. `done` and `error` may show the Done
 badge; `idle` never does (it is sent at mount, on interrupt, and on a session reset).
-While the root record decides, Prowl stops reading the screen and the native/log files
-and polls only the process every 2 s; `screen_reason` reports `screen.delegated`. A key
-press or CLI input puts the pane back on the 300 ms loop, with screen reads, for about
-3 s, so a session the input switched (`/new`, `/resume`) is attributed from the frame it
-settles into before the tick delegates again. When the record is cleared or the command
-finishes, the legacy paths take over again with their usual reasons; there is no silence
-timeout.
+While the root record decides, Prowl stops reading the screen and the native/log files;
+every 2 s it only probes the process and resolves the session (against the last screen
+text it read), and `screen_reason` reports `screen.delegated`. A key press or CLI input
+puts the pane back on the 300 ms loop, with screen reads, for about 3 s, so a session the
+input switched (`/new`, `/resume`) is attributed from the frame it settles into before the
+tick delegates again. Clearing the record withdraws that authority and the next poll reads
+the screen and the native/log files again, with their usual reasons; a finished command
+wakes the probe described below, which keeps the authority when the same agent is still
+there and releases the entry when it is gone. There is no silence timeout.
 
 Producers that never report (older versions, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`,
 `PI_PROGRAM_STATUS=0`) get today's screen and provider detection unchanged. The
