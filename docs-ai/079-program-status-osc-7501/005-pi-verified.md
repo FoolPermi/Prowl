@@ -17,7 +17,6 @@ same base; on this branch Claude Code stays unverified.
 | Support table | `App/Sources/Domain/AgentDetection/ProgramStatusEvidence.swift` | `ProgramStatusSupport.level(for:)` returns `.verified` for `.pi`; every other agent stays `.unverified` on this branch |
 | Tests | `App/Tests/AgentCoordinatorProgramStatusTests.swift`, `App/Tests/WorktreeTerminalStateProgramStatusTests.swift` | the production table is pinned at both levels (red before the flip, green after): the coordinator built with the default table delegates a Pi root (Pi has no provider to sample) while a Claude root keeps its legacy path; the terminal owner built with the default table publishes a Pi push (`osc.working`, delegated schedule) and publishes nothing for a Claude push |
 | Docs | `docs/components/agent-detection.md` (support table, Pi paragraph with the Blocked kinds and the selector gap, `legacy.detector` as Pi's fallback reason), new living doc `docs-ai/068-agent-state-providers/pi.md`, `architecture.md`, `docs-ai/013-prowl-cli/contracts/agents.md`, [producer-baseline.md](producer-baseline.md) (the Pi "Verification inside Prowl" table), `000-plan.md` (status, PR table) |
-
 | Settle window (added 2026-10-11 after 004's review finding 1) | `App/Sources/Domain/AgentDetection/AgentDetectionSchedule.swift` (`settleWindow`), `App/Sources/Features/Terminal/Models/WorktreeTerminalState.swift`, `WorktreeTerminalState+AgentDetection.swift`, `WorktreeTerminalState+ProgramStatus.swift` | a wake (key press, CLI input, finished command, unbound report, withdrawal) records `agentDetectionSettleUntilBySurface[surface] = now + 3 s`; while that deadline is ahead, `nextScheduleAfterTick` keeps the active cadence and `detectAgentState` reads the screen even on the delegated schedule, so a session the input switched (`/new`, `/resume`) is attributed from the frame it settles into rather than the frame of the key press. The one guaranteed full tick per wake is unchanged; the deadline is dropped by the next check after it passes and by the wake-state cleanup |
 | Tests (settle window) | `App/Tests/WorktreeTerminalStateProgramStatusTests.swift` | `keyPressKeepsTheActiveCadenceForTheSettleWindow()` (red before: the tick after the key press delegated again at once; green after: inside the window a delegated-schedule tick still reads the screen and the next schedule is active, after it the tick delegates and leaves the memo alone, the deadline is gone); the suspension test asserts the return to delegation after the window |
 
@@ -34,6 +33,13 @@ code finding. Round 2 (against the docs written after the replay) returned one f
 provider doc's Agent Profile row had attributed the dispatch receipts to the OSC decision,
 while a receipt comes only from an explicit `dispatch-complete` and OSC takes part in idle
 admission alone; the row was reworded. Round 3 confirmed the fix against the code with no new finding.
+
+Round 4 (2026-10-11, against the settle window commits) returned one finding, a Markdown nit:
+the two new Change rows had been separated from their table by a blank line; fixed. The
+code checks found no issue: every wake path records the deadline, a released pane still
+takes the warm/cold path, cleanup clears the deadline, both delegation predicates consult it,
+and OSC still decides the state (so `screen_reason` stays `screen.delegated` even while the
+window reads the screen).
 
 ## Verification
 
