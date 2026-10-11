@@ -242,14 +242,17 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
    transcript retain independent states. Missing, partial, stale, or unsupported
    records fall back to the screen. The registry's `sessionId` is also the pane's
    session identity (`process_log`, `exact`): it follows `/clear` and an in-process
-   `/resume` within the resolver's 5 s result cache without any screen text, so a
-   delegated pane tracks a rotation too; the transcript scan and fingerprint remain
-   the fallback for versions without the registry. Background daemon/remote sessions are not
+   `/resume` without any screen text, within the resolver's 5 s result cache plus one
+   delegated tick (about 7 s) while the registry stays readable, so a delegated pane
+   tracks a rotation too. A transient read failure keeps the last registry identity
+   for three resolutions before the transcript scan and fingerprint take over; they
+   remain the fallback for versions without the registry. Background daemon/remote sessions are not
    supported by this adapter. A manually relocated config root must be supplied
    through a Prowl launch profile; shell-only overrides can fall back to screen.
    Claude Code 2.1.295 and later also reports its state through
    [program status](#program-status-osc-7501). That root record outranks the
-   registry and the screen, and the registry is not read while it decides. The
+   registry and the screen, and the native state provider does not sample the
+   registry while it decides (the session resolver still reads it for identity). The
    registry and the screen rules are the fallback: Claude sends nothing before the
    trust dialog is answered, so that prompt is still the screen blocker, and a
    cleared record hands the pane back to them. A finished command (OSC 133) only

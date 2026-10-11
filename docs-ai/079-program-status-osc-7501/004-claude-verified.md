@@ -15,7 +15,8 @@ what landed, what the gates showed, and the one limitation the review surfaced.
 | Support table | `App/Sources/Domain/AgentDetection/ProgramStatusEvidence.swift` | `ProgramStatusSupport.level(for:)` returns `.verified` for `.claude`; every other agent stays `.unverified` (Pi flips in slice 4) |
 | Tests | `App/Tests/AgentCoordinatorProgramStatusTests.swift`, `App/Tests/WorktreeTerminalStateProgramStatusTests.swift` | the production table is pinned at both levels (red before the flip, green after): the coordinator built with the default table delegates a Claude root and must not sample the native provider, while a Pi root keeps `legacy.detector`; the terminal owner built with the default table publishes a Claude push (`osc.working`, delegated schedule) and publishes nothing for a Pi push |
 | Session identity (added 2026-10-11 after review finding 1) | `App/Sources/Infrastructure/AgentDetection/AgentPidArtifacts.swift` (`ClaudeSessionRegistry`), `ClaudeRuntimeDecoder.swift` (`sessionID(_:process:)`), `AgentSessionProfile.swift` | the Claude profile gains `pidKeyedSession` and `rootedPIDKeyedSession`: the registry's `sessionId` (`<root>/sessions/<pid>.json`, validated against the live pid and start second; the status fields are not consulted) is the pane's session with `process_log` / `exact`, and the transcript path is reported once the first prompt created it. The transcript scan and fingerprint stay the fallback for versions without the registry. `alphanumericDashed` became internal so the registry can derive the transcript path from the record's cwd |
-| Tests (session identity) | `App/Tests/ClaudeSessionRegistryTests.swift`, `App/Tests/ClaudeRuntimeProviderTests.swift` | the registry read with and without the transcript, stale claims from a reused pid and malformed or oversized records, the profile hooks under the home and under a relocated root, and the rotation end to end through `AgentSessionResolver` with this test process as the agent (the rewrite shows once the 5 s result cache expires, with stale screen text); the decoder yields the identity for a status it does not know |
+| Session hold (round 4 finding 1) | `App/Sources/Infrastructure/AgentDetection/AgentSessionResolver.swift` | a pid-keyed lookup (Claude registry, Copilot log, Qwen sidecar, Grok rows) that named the process's session once is held through up to three consecutive uncached misses (`pidKeyedHoldMisses`), so a transient read failure keeps the exact identity instead of promoting a fingerprint guess that would rotate the evidence epoch; a removed artifact falls back to the scan at the fourth miss |
+| Tests (session identity) | `App/Tests/ClaudeSessionRegistryTests.swift`, `App/Tests/ClaudeRuntimeProviderTests.swift` | the registry read with and without the transcript, stale claims from a reused pid and malformed or oversized records, the profile hooks under the home and under a relocated root, the rotation end to end through `AgentSessionResolver` with this test process as the agent (the rewrite shows once the 5 s result cache expires, with stale screen text), and the hold (registry removed with two scoreable transcripts and a stale frame matching the outgoing one: exact identity for three misses, the scan's `transcript_match` at the fourth, exact again once the registry is back); the decoder yields the identity for a status it does not know |
 | Docs | `docs/components/agent-detection.md`, `docs-ai/068-agent-state-providers/architecture.md`, `claude.md` (new *Program status* section with the observed boundary table), `docs-ai/013-prowl-cli/contracts/agents.md`, [producer-baseline.md](producer-baseline.md) (the Claude "Verification inside Prowl" table and the harness rows for child records, `/clear`, and `/resume`), `000-plan.md` (boundary rows corrected from the observations) |
 
 No other code changed: the push path, the delegated tick, the withdrawal fence, the
@@ -31,6 +32,17 @@ the diff, and the code paths the flip activates). Round 1 returned three finding
 | 1 | A delegated tick hands the session resolver the screen text of the last full tick, so after a same-PID `/clear` or `/resume` the fingerprint matcher can keep selecting the outgoing session with high confidence until the next key press (no fresh miss ages it); the plan's "a few ticks longer" understated this | Accepted. First recorded as a known limitation; after onevcat's decision on 2026-10-11 it is fixed in this PR by taking the session from Claude's pid registry (see *Session identity under delegation*); the plan's `/clear` row and `068/claude.md` state the new behaviour |
 | 2 | The table was flipped before the inside-Prowl acceptance record existed | Closed by this record and the baseline table; the gate runs are below |
 | 3 | The manual described a finished command as an unconditional fallback and delegated work as "process only" | Accepted: `agent-detection.md` now says `clear` withdraws authority, a finished command wakes a probe that keeps the authority for the same owner and releases a confirmed exit, and delegated ticks probe the process and resolve the session |
+
+Round 4 (2026-10-11, against the session identity commits) returned five findings, all
+accepted: one code change and four documentation corrections.
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| 1 | A transient registry read failure returned the same `nil` as "no registry", so the resolver fell through to the fingerprint and could promote the outgoing session at `high` confidence for 5 s — and a non-medium identity change rotates the evidence epoch and clears the hook channels and signals that waits and dispatch admission consume | Fixed: the resolver holds a pid-keyed exact identity through three consecutive uncached misses before the scan takes over (`pidKeyedHoldMisses`), with a resolver test for the hold, the fallback, and the recovery |
+| 2 | The manual said the registry "is not read" while OSC decides, which now holds for the native state provider only, and stated a flat 5 s bound | Fixed in `agent-detection.md`: the provider does not sample the registry, the resolver still reads it for identity; the bound is the 5 s cache plus one delegated tick while the registry stays readable |
+| 3 | "`/clear` was never affected" overstated the old scan: the fingerprint recovery needs a distinctive first prompt, and the quiet window before it showed the outgoing session on both paths | Fixed in *Session identity under delegation* |
+| 4 | The impact statement ("only the roster") omitted that an exact or high session feeds the evidence epoch, so session-bound hook evidence (channels, signals, dispatch admission) changes with identity | Fixed in *Session identity under delegation* |
+| 5 | The retained background-agent observation said Claude "does not end the turn", contradicting the harness account of a `Stop` hook before the wait | Fixed: the observation now says the root record stays `working` after the parent's `Stop` and `done` follows the auto-submitted result turn |
 
 Round 2 (against the docs written after the replay) returned four findings, all accepted
 and all documentation corrections: `seen` starts true, so the Done badge seen after the
@@ -64,11 +76,12 @@ confirmed the four fixes against the code with no new finding.
   OSC alone, "the root's own turn ended" is not (the `Stop` hook and the screen row are the
   only signals), and an Idle-while-background decision would be followed by a short Working
   for the auto-submitted turn. onevcat decided on 2026-10-11 to keep the current behaviour.
-- **Background agents keep the pane Working.** Claude Code 2.1.296 does not end the turn
-  when it starts a background subagent: the TUI shows `✻ Waiting for 1 background agent to
-  finish`, the prompt box is usable, and the root record stays `working` until the subagent
-  returns, when the turn ends with `done`. The fallback screen rule `claude.backgroundWork`
-  reads the same frame as Working, so the two paths agree. The product decision of
+- **Background agents keep the pane Working.** Claude Code 2.1.296 keeps the root record
+  `working` while it waits for a background subagent, even after the `Stop` hook of its own
+  turn (see the harness replay above): the TUI shows `✻ Waiting for 1 background agent to
+  finish`, the prompt box is usable, and `done` arrives only after the auto-submitted result
+  turn ends. The fallback screen rule `claude.backgroundWork` reads the same frame as
+  Working, so the two paths agree. The product decision of
   2026-10-10 (background work leaves the pane Idle and never blocks a workflow) is
   implemented on Prowl's side (child `working` is ignored) but does not take effect for
   Claude until Claude Code reports the main turn as `done` with the subagent as a child
@@ -110,9 +123,13 @@ screen again. Claude's `/clear` sends `working` then `idle` and an in-process `/
 sends only `idle` (harness, baseline), neither a withdrawal, so a rotation woke nothing.
 What that meant for the resolver, which runs every delegated tick with the stale text:
 
-- `/clear` was never affected: the new transcript appears with the first prompt, the
-  frame of that Enter carries the prompt text, and the fingerprint selected the new
-  session once the 5 s result cache expired — the same as on `main`.
+- `/clear` ordinarily recovered: the frame of the first prompt's Enter carries the prompt
+  text, and once the new transcript held it the fingerprint selected the new session at
+  the next uncached resolution — the same as on `main`. That recovery was conditional
+  (a prompt of at least 12 normalized characters that scores against the new transcript
+  and clears the margin over the old one), and the quiet window between `/clear` and
+  that prompt showed the outgoing session on both paths, because nothing but the
+  registry can attribute an empty new transcript.
 - An in-process `/resume` to a session that already had a process-lifetime transcript
   (two candidates, so only the fingerprint could decide) was stuck: the frame of the
   picker's Enter either matched nothing — the outgoing session was retained for three
@@ -121,9 +138,14 @@ What that meant for the resolver, which runs every delegated tick with the stale
   corrected it until the next input, after which the cache (5 s) plus one delegated
   tick (2 s) bound the recovery at about 7 s. `main` corrects the same case within
   5 s because its 300 ms loop re-reads the settled frame.
-- Only the roster, `prowl agents --json`, and the Active Agents row's session log
-  actions carried the stale identity; `agents read` resolves from a fresh frame, and
-  readiness, waits, and dispatch do not read the session.
+- The stale identity was visible in the roster, `prowl agents --json`, and the Active
+  Agents row's session log actions; `agents read` resolves from a fresh frame. OSC state
+  selection and explicit dispatch receipts do not derive from the session, but session-
+  bound hook evidence does: an exact or high pane session feeds the evidence epoch, and a
+  change rotates it, clearing the current channels and signals that idle, blocked, and
+  changed waits and dispatch admission consume (`updateEvidenceEpoch`,
+  `AgentConditionEvidence`). A `high` fingerprint guess that moved and moved back
+  therefore cost more than a wrong roster line.
 
 The fix takes Claude out of the screen's hands: the registry record that the native
 provider already decodes names the current session for the live pid (`/new` and
