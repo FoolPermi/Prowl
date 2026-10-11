@@ -20,6 +20,7 @@ extension WorktreeTerminalState {
       surfaceAgentStates[view.id] = PaneAgentState(lastChangedAt: now)
     }
     agentDetectionFullTickRequests.insert(view.id)
+    agentDetectionSettleUntilBySurface[view.id] = now.addingTimeInterval(AgentDetectionSchedule.settleWindow)
     startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
     interruptAgentDetectionSleep(forSurfaceID: view.id)
   }
@@ -59,15 +60,26 @@ extension WorktreeTerminalState {
   }
 
   /// The schedule after one tick. A verified producer's eligible root delegates the
-  /// next tick only while the probe keeps confirming the agent: a miss leaves
-  /// delegation so the remaining misses run on the active cadence.
+  /// next tick only while the probe keeps confirming the agent and no wake is settling:
+  /// a miss leaves delegation so the remaining misses run on the active cadence, and a
+  /// key press keeps it for the settle window so the frame it changes is read.
   func nextScheduleAfterTick(surfaceID: UUID, hasAgent: Bool, now: Date = Date()) -> AgentDetectionSchedule {
     let delegated =
       agentDetectionCoordinators[surfaceID]?.isDelegated == true
       && agentDetectionPresenceBySurface[surfaceID]?.consecutiveMisses == 0
       && !agentDetectionFullTickRequests.contains(surfaceID)
+      && !isAgentDetectionSettling(surfaceID: surfaceID, now: now)
     return Self.nextSchedule(
       agentDetectionSchedules[surfaceID] ?? .cold, hasAgent: hasAgent, delegated: delegated, now: now)
+  }
+
+  /// Whether a wake still holds the surface on the active cadence; an expired window is
+  /// dropped on the way out.
+  func isAgentDetectionSettling(surfaceID: UUID, now: Date) -> Bool {
+    guard let until = agentDetectionSettleUntilBySurface[surfaceID] else { return false }
+    if until > now { return true }
+    agentDetectionSettleUntilBySurface.removeValue(forKey: surfaceID)
+    return false
   }
 
   func finishColdAgentDetection(forSurfaceID surfaceID: UUID) {
@@ -91,7 +103,8 @@ extension WorktreeTerminalState {
   func detectAgentState(
     for view: GhosttySurfaceView,
     tabId: TerminalTabID,
-    resolveSession: RetainedSessionResolver? = nil
+    resolveSession: RetainedSessionResolver? = nil,
+    now: Date = Date()
   ) async -> Bool {
     let surfaceID = view.id
     let childPID = view.bridge.childPID()
@@ -131,18 +144,19 @@ extension WorktreeTerminalState {
       return false
     }
 
-    let now = Date()
     var previous = surfaceAgentStates[surfaceID] ?? PaneAgentState(lastChangedAt: now)
     let capturedAt = ProcessInfo.processInfo.systemUptime
     let coordinator = agentDetectionCoordinators[surfaceID] ?? makeAgentDetectionCoordinator(surfaceID: surfaceID)
     agentDetectionCoordinators[surfaceID] = coordinator
     let process = Self.processGeneration(identified)
     // The tick is delegated only while the schedule says so (a key press puts one full
-    // tick back on the active schedule) and the probe confirmed the generation the
-    // authority was bound to: a miss or an engine change gets a full acquisition.
+    // tick back on the active schedule and keeps it there for the settle window) and the
+    // probe confirmed the generation the authority was bound to: a miss or an engine
+    // change gets a full acquisition.
     let delegated =
       coordinator.isDelegated && agentDetectionSchedules[surfaceID] == .delegated
       && !agentDetectionFullTickRequests.contains(surfaceID)
+      && !isAgentDetectionSettling(surfaceID: surfaceID, now: now)
       && process != nil && process == coordinator.boundProcess
     if !delegated { agentDetectionFullTickRequests.remove(surfaceID) }
     let (activeText, detection) = pollScreen(for: view, surfaceID: surfaceID, agent: agent, delegated: delegated)
@@ -590,6 +604,7 @@ extension WorktreeTerminalState {
     for surfaceID in surfaces.keys { agentDetectionLifecycleBySurface[surfaceID, default: 0] &+= 1 }
     agentDetectionTasks.removeAll()
     agentDetectionFullTickRequests.removeAll()
+    agentDetectionSettleUntilBySurface.removeAll()
     agentDetectionLoopTokens.removeAll()
     for sleeper in agentDetectionSleepersBySurface.values { sleeper.task.cancel() }
     agentDetectionSleepersBySurface.removeAll()
