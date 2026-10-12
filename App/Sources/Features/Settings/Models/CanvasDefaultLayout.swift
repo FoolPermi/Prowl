@@ -12,6 +12,16 @@ enum CanvasDefaultLayout: String, CaseIterable, Identifiable, Codable, Sendable 
 
   var id: String { rawValue }
 
+  /// The automatic layout this setting applies on first entry. `uniform` keeps
+  /// its historical meaning: the size-preserving pack, which on a fresh set of
+  /// default-size cards gives same-size cards packed to fit.
+  var layoutKind: CanvasLayoutKind {
+    switch self {
+    case .uniform: .arrange
+    case .tile: .tile
+    }
+  }
+
   var title: String {
     switch self {
     case .uniform:

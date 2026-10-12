@@ -11,9 +11,19 @@ struct CanvasFocusRequest: Equatable, Sendable {
   let target: Target
 }
 
-struct CanvasFocusCandidate: Equatable, Sendable {
+/// One card on the canvas: an open tab that has a surface, plus the worktree
+/// that owns it.
+struct CanvasCardRef: Equatable, Sendable {
   let worktreeID: Worktree.ID
   let tabID: TerminalTabID
+
+  var key: String { tabID.canvasCardKey }
+}
+
+extension TerminalTabID {
+  /// Key of this tab's card in `CanvasLayoutStore` (persisted, so it must stay
+  /// the tab UUID string).
+  var canvasCardKey: String { rawValue.uuidString }
 }
 
 /// A reducer-driven request to run one of CanvasView's view-local commands
@@ -23,9 +33,7 @@ struct CanvasFocusCandidate: Equatable, Sendable {
 struct CanvasCommandRequest: Equatable, Sendable {
   enum Command: Equatable, Sendable {
     case toggleExpand
-    case arrange
-    case organize
-    case tile
+    case layout(CanvasLayoutKind)
     case selectAll
     case navigate(CanvasNavigationDirection)
   }
@@ -37,7 +45,7 @@ struct CanvasCommandRequest: Equatable, Sendable {
 enum CanvasFocusResolver {
   static func resolve(
     request: CanvasFocusRequest,
-    candidates: [CanvasFocusCandidate],
+    candidates: [CanvasCardRef],
     currentPrimaryTabID: TerminalTabID?
   ) -> TerminalTabID? {
     switch request.target {

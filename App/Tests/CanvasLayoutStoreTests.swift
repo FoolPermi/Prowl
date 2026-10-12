@@ -49,7 +49,7 @@ struct CanvasLayoutStoreTests {
 
     #expect(store.cardLayouts == legacyLayouts)
     #expect(Set(store.zOrder) == Set(legacyLayouts.keys))
-    #expect(store.shouldAutoArrangeOnInitialEntry(for: ["tab-a", "tab-b"]) == false)
+    #expect(store.shouldApplyInitialLayout(for: ["tab-a", "tab-b"]) == false)
   }
 
   @Test func skipsInitialAutoArrangeWhenCurrentCardsWereLoadedFromStorage() throws {
@@ -63,8 +63,8 @@ struct CanvasLayoutStoreTests {
 
     let restoredStore = CanvasLayoutStore(defaults: defaults)
 
-    #expect(restoredStore.shouldAutoArrangeOnInitialEntry(for: ["tab-a", "tab-b"]) == false)
-    #expect(restoredStore.shouldAutoArrangeOnInitialEntry(for: ["tab-c", "tab-d"]))
+    #expect(restoredStore.shouldApplyInitialLayout(for: ["tab-a", "tab-b"]) == false)
+    #expect(restoredStore.shouldApplyInitialLayout(for: ["tab-c", "tab-d"]))
   }
 
   @Test func moveToFrontPersistsZOrder() {

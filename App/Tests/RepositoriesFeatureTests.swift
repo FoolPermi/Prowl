@@ -21,16 +21,16 @@ struct RepositoriesFeatureTests {
       $0.nextCanvasCommandRequestID = 1
       $0.pendingCanvasCommandRequest = CanvasCommandRequest(id: 1, command: .toggleExpand)
     }
-    await store.send(.requestCanvasCommand(.arrange)) {
+    await store.send(.requestCanvasCommand(.layout(.arrange))) {
       $0.nextCanvasCommandRequestID = 2
-      $0.pendingCanvasCommandRequest = CanvasCommandRequest(id: 2, command: .arrange)
+      $0.pendingCanvasCommandRequest = CanvasCommandRequest(id: 2, command: .layout(.arrange))
     }
   }
 
   @Test func consumeCanvasCommandRequestClearsOnlyMatchingID() async {
     var initialState = RepositoriesFeature.State()
     initialState.nextCanvasCommandRequestID = 5
-    initialState.pendingCanvasCommandRequest = CanvasCommandRequest(id: 5, command: .organize)
+    initialState.pendingCanvasCommandRequest = CanvasCommandRequest(id: 5, command: .layout(.organize))
     let store = TestStore(initialState: initialState) {
       RepositoriesFeature()
     }

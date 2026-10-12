@@ -12,8 +12,8 @@ struct CanvasFocusResolverTests {
     let resolved = CanvasFocusResolver.resolve(
       request: CanvasFocusRequest(id: 1, target: .worktree(worktreeID)),
       candidates: [
-        CanvasFocusCandidate(worktreeID: worktreeID, tabID: first),
-        CanvasFocusCandidate(worktreeID: worktreeID, tabID: second),
+        CanvasCardRef(worktreeID: worktreeID, tabID: first),
+        CanvasCardRef(worktreeID: worktreeID, tabID: second),
       ],
       currentPrimaryTabID: nil
     )
@@ -30,9 +30,9 @@ struct CanvasFocusResolverTests {
     let resolved = CanvasFocusResolver.resolve(
       request: CanvasFocusRequest(id: 1, target: .worktree(worktreeID)),
       candidates: [
-        CanvasFocusCandidate(worktreeID: worktreeID, tabID: first),
-        CanvasFocusCandidate(worktreeID: "/tmp/other/main", tabID: other),
-        CanvasFocusCandidate(worktreeID: worktreeID, tabID: second),
+        CanvasCardRef(worktreeID: worktreeID, tabID: first),
+        CanvasCardRef(worktreeID: "/tmp/other/main", tabID: other),
+        CanvasCardRef(worktreeID: worktreeID, tabID: second),
       ],
       currentPrimaryTabID: first
     )
@@ -48,8 +48,8 @@ struct CanvasFocusResolverTests {
     let resolved = CanvasFocusResolver.resolve(
       request: CanvasFocusRequest(id: 1, target: .worktree(worktreeID)),
       candidates: [
-        CanvasFocusCandidate(worktreeID: worktreeID, tabID: first),
-        CanvasFocusCandidate(worktreeID: worktreeID, tabID: second),
+        CanvasCardRef(worktreeID: worktreeID, tabID: first),
+        CanvasCardRef(worktreeID: worktreeID, tabID: second),
       ],
       currentPrimaryTabID: second
     )
@@ -63,8 +63,8 @@ struct CanvasFocusResolverTests {
     let resolved = CanvasFocusResolver.resolve(
       request: CanvasFocusRequest(id: 1, target: .tab(requested)),
       candidates: [
-        CanvasFocusCandidate(worktreeID: "/tmp/repo/main", tabID: TerminalTabID(rawValue: UUID())),
-        CanvasFocusCandidate(worktreeID: "/tmp/repo/main", tabID: requested),
+        CanvasCardRef(worktreeID: "/tmp/repo/main", tabID: TerminalTabID(rawValue: UUID())),
+        CanvasCardRef(worktreeID: "/tmp/repo/main", tabID: requested),
       ],
       currentPrimaryTabID: nil
     )
@@ -76,7 +76,7 @@ struct CanvasFocusResolverTests {
     let resolved = CanvasFocusResolver.resolve(
       request: CanvasFocusRequest(id: 1, target: .tab(TerminalTabID(rawValue: UUID()))),
       candidates: [
-        CanvasFocusCandidate(worktreeID: "/tmp/repo/main", tabID: TerminalTabID(rawValue: UUID()))
+        CanvasCardRef(worktreeID: "/tmp/repo/main", tabID: TerminalTabID(rawValue: UUID()))
       ],
       currentPrimaryTabID: nil
     )

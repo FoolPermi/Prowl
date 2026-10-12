@@ -9,12 +9,8 @@ extension CanvasView {
     switch request.command {
     case .toggleExpand:
       toggleExpandFocusedCard()
-    case .arrange:
-      arrangeCardsWithFit()
-    case .organize:
-      organizeCardsWithFit()
-    case .tile:
-      tileCardsWithFit()
+    case .layout(let kind):
+      applyLayout(kind)
     case .selectAll:
       selectAllCards()
     case .navigate(let direction):
@@ -31,7 +27,7 @@ extension CanvasView {
   /// was, behind a dimming scrim.
   func expandCard(_ tabID: TerminalTabID, states: [WorktreeTerminalState]) {
     guard viewportSize.width > 0, viewportSize.height > 0,
-      layoutStore.cardLayouts[tabID.rawValue.uuidString] != nil
+      layoutStore.cardLayouts[tabID.canvasCardKey] != nil
     else { return }
     focusSingleCard(tabID, states: states)
     withAnimation(expandAnimation) {
@@ -60,7 +56,7 @@ extension CanvasView {
     guard let request else { return }
     let tabID = CanvasFocusResolver.resolve(
       request: request,
-      candidates: collectFocusCandidates(from: states),
+      candidates: canvasCards(in: states),
       currentPrimaryTabID: selectionState.primaryTabID
     )
     guard let tabID else { return }
@@ -71,8 +67,7 @@ extension CanvasView {
 
   func focusViewport(on tabID: TerminalTabID) {
     guard viewportSize.width > 0, viewportSize.height > 0 else { return }
-    let cardKey = tabID.rawValue.uuidString
-    guard let layout = layoutStore.cardLayouts[cardKey] else { return }
+    guard let layout = layoutStore.cardLayouts[tabID.canvasCardKey] else { return }
 
     let horizontalPadding: CGFloat = 80
     let verticalPadding: CGFloat = 80 + bottomToolbarReserve
@@ -92,14 +87,7 @@ extension CanvasView {
       width: viewportSize.width / 2 - layout.position.x * targetScale,
       height: (viewportSize.height - bottomToolbarReserve) / 2 - layout.position.y * targetScale
     )
-    let start = CanvasViewportAnimator.Snapshot(offset: canvasOffset, scale: canvasScale)
-    let end = CanvasViewportAnimator.Snapshot(offset: targetOffset, scale: targetScale)
-    viewportAnimator.animate(from: start, to: end) { [self] snapshot in
-      canvasOffset = snapshot.offset
-      lastCanvasOffset = snapshot.offset
-      canvasScale = snapshot.scale
-      lastCanvasScale = snapshot.scale
-    }
+    animateViewport(to: CanvasViewportAnimator.Snapshot(offset: targetOffset, scale: targetScale))
   }
 
   func handleSelectionShieldTap(
@@ -142,7 +130,7 @@ extension CanvasView {
   ) {
     let previousPrimaryTabID = selectionState.primaryTabID
     mutation(&selectionState)
-    selectionState.prune(to: Set(collectVisibleTabIDs(from: states)))
+    selectionState.prune(to: Set(canvasCards(in: states).map(\.tabID)))
     syncPrimaryFocus(from: previousPrimaryTabID, to: selectionState.primaryTabID, states: states)
     syncBroadcastCallbacks(states: states)
   }
@@ -165,7 +153,7 @@ extension CanvasView {
       return
     }
 
-    layoutStore.moveToFront(newTabID.rawValue.uuidString)
+    layoutStore.moveToFront(newTabID.canvasCardKey)
     ownerState.tabManager.selectTab(newTabID)
     terminalManager.canvasFocusedWorktreeID = ownerState.worktreeID
     onFocusedWorktreeChanged(ownerState.worktreeID)
