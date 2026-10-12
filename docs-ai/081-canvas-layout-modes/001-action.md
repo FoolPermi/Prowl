@@ -4,10 +4,10 @@
 
 | Date | Change | Ref |
 | --- | --- | --- |
-| 2026-10-12 | S0: `CanvasLayoutKind`, `CanvasLayoutEngine`, `CanvasGridLayout`, `CanvasCardRef`, `applyLayout(_:)`; layout merging moved into `CanvasLayoutStore.applyLayouts` after review | [002](002-s0-consolidation.md) |
-| 2026-10-12 | S1: `CanvasCardPlacement`, following foreground-created cards (`lastForegroundCreatedTabID`), `CanvasViewportMath.reveal`, CLI tab creation stays in Canvas; review fixes for background tabs, empty Canvas, split panes, and reveal edge cases | [003](003-s1-placement.md) |
-| 2026-10-12 | S2: `CanvasLayoutMode`, relayout on card-set and viewport changes, toolbar state, persisted mode; review fixes for deferred relayouts, mode retention across launches, animation, and refit-vs-reveal | [004](004-s2-layout-modes.md) |
-| 2026-10-12 | S3: `prowl canvas show\|hide\|layout\|fit\|status` with contracts, schema, docs, and skill | [005](005-s3-cli.md) |
+| 2026-10-12 | S0: `CanvasLayoutKind`, `CanvasLayoutEngine`, `CanvasGridLayout`, `CanvasCardRef`, `applyLayout(_:)`; layout merging moved into `CanvasLayoutStore.applyLayouts` after review | #901, [002](002-s0-consolidation.md) |
+| 2026-10-12 | S1: `CanvasCardPlacement`, following foreground-created cards (`lastForegroundCreatedTabID`), `CanvasViewportMath.reveal`, CLI tab creation stays in Canvas; review fixes for background tabs, empty Canvas, split panes, and reveal edge cases | #902, [003](003-s1-placement.md) |
+| 2026-10-12 | S2: `CanvasLayoutMode`, relayout on card-set and viewport changes, toolbar state, persisted mode; review fixes for deferred relayouts, mode retention across launches, animation, and refit-vs-reveal | #903, [004](004-s2-layout-modes.md) |
+| 2026-10-12 | S3: `prowl canvas show\|hide\|layout\|fit\|status` with contracts, schema, docs, and skill | #904, [005](005-s3-cli.md) |
 
 ## Outcome & current state
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | **Status** | Implemented |
 | **Anchor date** | 2026-10-12 |
-| **Primary PRs** | S0 (TBD), S1 (TBD), S2 (TBD), S3 (TBD) |
+| **Primary PRs** | #901 (S0), #902 (S1), #903 (S2), #904 (S3) |
 | **Related** | [005-canvas-live-sessions](../005-canvas-live-sessions/000-plan.md), [024-canvas-interaction-evolution](../024-canvas-interaction-evolution/000-plan.md), [043-canvas-tile-layout](../043-canvas-tile-layout/000-plan.md), [060-prowl-cli-targeting-and-contract-governance](../060-prowl-cli-targeting-and-contract-governance/000-plan.md), [#760](https://github.com/onevcat/Prowl/issues/760), `docs/components/canvas.md`, `docs/components/cli.md` |
 
 ## Background
