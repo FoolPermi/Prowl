@@ -95,13 +95,13 @@ Once a layout ran, Canvas forgot it. Three problems followed:
   (the focused card): right, then below, then the nearest free corner slot.
   A batch of new cards is placed one at a time with the previous new card as
   the next anchor, so the result does not depend on how creations were batched.
-- `TerminalClient.Event.tabCreated` carries the tab ID and whether the tab was
-  created focused. In Canvas, a focused creation from any entry point (⌘T,
-  palette, sidebar, CLI without `--background`, custom commands) becomes one
-  Canvas focus request; the separate sidebar-only request goes away.
-- Canvas focus requests carry a viewport intent: explicit navigation centers
-  the card (today's behavior); a creation reveals it with the smallest pan, and
-  zooms out only when the card does not fit.
+- A card created as the selected tab of its worktree — every foreground
+  creation path (⌘T, palette, sidebar, CLI without `--background`) — takes
+  Canvas focus in the same pass that places it, and is revealed with the
+  smallest pan, zooming out only when it does not fit. Background creations
+  leave focus alone. (Corrected during S1: the plan first routed this through
+  the `tabCreated` event; see [003](003-s1-placement.md).)
+- Foreground `prowl create tab` no longer leaves Canvas.
 
 ### S2 — Layout modes
 
@@ -141,3 +141,4 @@ Once a layout ran, Canvas forgot it. Three problems followed:
 ## Amendments
 
 - Updated 2026-10-12: S0 consolidation shipped — see [002-s0-consolidation.md](002-s0-consolidation.md)
+- Updated 2026-10-12: S1 placement and following new cards — see [003-s1-placement.md](003-s1-placement.md)

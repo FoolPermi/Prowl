@@ -2110,7 +2110,34 @@ struct RepositoriesFeatureTests {
     )
   }
 
-  @Test func newTerminalTabInCanvasCreatesAndFocusesNewCanvasTab() async {
+  @Test func newTerminalTabInCanvasCreatesTabWithoutLeavingCanvas() async {
+    let worktree = makeWorktree(id: "/tmp/repo/wt", name: "wt")
+    let repository = makeRepository(id: "/tmp/repo", worktrees: [worktree])
+    let sentCommands = LockIsolated<[TerminalClient.Command]>([])
+    var initialState = makeState(repositories: [repository])
+    initialState.selection = .canvas
+
+    let store = TestStore(initialState: initialState) {
+      RepositoriesFeature()
+    } withDependencies: {
+      $0.terminalClient.send = { command in
+        sentCommands.withValue { $0.append(command) }
+      }
+    }
+
+    // The new card takes focus through the `.tabCreated` terminal event, not here.
+    await store.send(.newTerminalTab(worktree.id))
+    await store.finish()
+
+    #expect(store.state.selection == .canvas)
+    #expect(
+      sentCommands.value == [
+        .createTabInDirectory(worktree, directory: worktree.workingDirectory)
+      ]
+    )
+  }
+
+  @Test func newTerminalTabCreatedInCanvasRequestsRevealFocus() async {
     let worktree = makeWorktree(id: "/tmp/repo/wt", name: "wt")
     let repository = makeRepository(id: "/tmp/repo", worktrees: [worktree])
     let createdTabID = TerminalTabID(rawValue: UUID())
@@ -2119,26 +2146,17 @@ struct RepositoriesFeatureTests {
 
     let store = TestStore(initialState: initialState) {
       RepositoriesFeature()
-    } withDependencies: {
-      $0.terminalClient.createTabInDirectory = { actualWorktree, actualDirectory in
-        #expect(actualWorktree == worktree)
-        #expect(actualDirectory == worktree.workingDirectory)
-        return createdTabID
-      }
     }
 
-    await store.send(.newTerminalTab(worktree.id))
-    await store.receive(\.newTerminalTabCreatedInCanvas) {
+    await store.send(.newTerminalTabCreatedInCanvas(worktree.id, createdTabID)) {
       $0.nextCanvasFocusRequestID = 1
       $0.pendingCanvasFocusRequest = CanvasFocusRequest(
         id: 1,
-        target: .tab(createdTabID)
+        target: .tab(createdTabID),
+        viewport: .reveal
       )
       $0.openedWorktreeIDs = [worktree.id]
     }
-    await store.finish()
-
-    #expect(store.state.selection == .canvas)
   }
 
   @Test func newTerminalTabWithUnknownWorktreeDoesNothing() async {

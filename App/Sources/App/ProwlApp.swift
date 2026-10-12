@@ -393,9 +393,6 @@ struct ProwlApp: App {
       send: { command in
         terminalManager.handleCommand(command)
       },
-      createTabInDirectory: { worktree, directory in
-        terminalManager.createTabInDirectory(worktree, directory: directory)
-      },
       launchAgentProfile: { worktree, request in
         switch await terminalManager.prepareAgentProfileLaunch(request, in: worktree) {
         case .success(let preparation):
@@ -1005,7 +1002,7 @@ struct ProwlApp: App {
         return nil
       }
       if focus {
-        selectCLIWorktreeContext(
+        selectCLIWorktreeContextForNewTab(
           worktreeID: target.worktreeID,
           appStore: appStore,
           terminalManager: terminalManager
@@ -1552,7 +1549,7 @@ struct ProwlApp: App {
     }
 
     if !request.background {
-      selectCLIWorktreeContext(
+      selectCLIWorktreeContextForNewTab(
         worktreeID: request.target.worktreeID,
         appStore: appStore,
         terminalManager: terminalManager
@@ -1633,6 +1630,19 @@ struct ProwlApp: App {
       appStore.send(.repositories(.selectRepository(worktreeID)))
     }
     terminalManager.handleCommand(.setSelectedWorktreeID(worktreeID))
+  }
+
+  /// Context for a tab the CLI creates in the foreground. Outside Canvas the
+  /// worktree is selected so the tab shows. In Canvas the new card takes focus
+  /// and is revealed on its own (`CanvasView.followNewCard`); selecting the
+  /// worktree would leave Canvas.
+  static func selectCLIWorktreeContextForNewTab(
+    worktreeID: Worktree.ID,
+    appStore: StoreOf<AppFeature>,
+    terminalManager: WorktreeTerminalManager
+  ) {
+    guard !appStore.state.repositories.isShowingCanvas else { return }
+    selectCLIWorktreeContext(worktreeID: worktreeID, appStore: appStore, terminalManager: terminalManager)
   }
 
   private static func bringMainWindowToFront() -> Bool {

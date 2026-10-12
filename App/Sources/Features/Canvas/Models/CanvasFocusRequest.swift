@@ -7,8 +7,18 @@ struct CanvasFocusRequest: Equatable, Sendable {
     case tab(TerminalTabID)
   }
 
+  /// How the viewport follows the focused card.
+  enum Viewport: Equatable, Sendable {
+    /// Center and zoom to the card — explicit navigation to it.
+    case center
+    /// Show the card with the least pan (zooming out only if it does not fit),
+    /// keeping the surrounding cards in view — used for newly created cards.
+    case reveal
+  }
+
   let id: Int
   let target: Target
+  var viewport: Viewport = .center
 }
 
 /// One card on the canvas: an open tab that has a surface, plus the worktree

@@ -49,6 +49,8 @@ struct CanvasView: View {
   let maxCardHeight: CGFloat = 1600
   let layoutMetrics = CanvasLayoutMetrics.standard
   var titleBarHeight: CGFloat { layoutMetrics.titleBarHeight }
+  /// Margin kept between a revealed card and the viewport edge.
+  let revealMargin: CGFloat = 20
   /// Outer margin kept when fitting the whole canvas into the visible viewport.
   let viewportFitPadding: CGFloat = 12
   /// Reserved height at the bottom of the viewport for the help button and
@@ -122,7 +124,8 @@ struct CanvasView: View {
             } else {
               hasSeenCanvasCards = true
             }
-            placeUnpositionedCards(newKeys)
+            let placedNextToOthers = placeUnpositionedCards(newKeys)
+            followNewCard(among: placedNextToOthers, states: terminalManager.activeWorktreeStates)
             if !newKeys.isEmpty {
               layoutStore.ensureZOrder(for: newKeys)
             }
@@ -378,6 +381,9 @@ struct CanvasView: View {
     // implicit transaction), so drive it explicitly. Only the toggled card's
     // value changes, so the rest stay put.
     .animation(expandAnimation, value: isCardExpanded)
+    // A new card renders once before `placeUnpositionedCards` gives it a spot;
+    // keep it invisible (but mounted, so its terminal can take focus) until then.
+    .opacity(layoutStore.cardLayouts[cardKey] == nil ? 0 : 1)
     .zIndex(zIndex(for: tab.id, cardKey: cardKey))
   }
 
@@ -456,30 +462,54 @@ struct CanvasView: View {
 
   // MARK: - Layout
 
-  /// Give every card that has no stored layout a position. Unpositioned cards
-  /// are placed together in one pass so a batch of new cards shares a single,
-  /// consistent column count.
-  func placeUnpositionedCards(_ cardKeys: [String]) {
+  /// Give every card that has no stored layout a position. On a fresh canvas
+  /// the cards form a balanced grid; after that, each new card goes to a free
+  /// spot next to the focused card without moving any other card.
+  ///
+  /// Returns the keys placed next to existing cards, in placement order (empty
+  /// for the fresh-canvas grid).
+  @discardableResult
+  func placeUnpositionedCards(_ cardKeys: [String]) -> [String] {
     let unpositioned = cardKeys.filter { layoutStore.cardLayouts[$0] == nil }
-    guard !unpositioned.isEmpty else { return }
-
-    // Count only VISIBLE cards that already have layouts (ignores stale entries).
-    let positionedCount = cardKeys.count - unpositioned.count
-    // For incremental adds, preserve the existing grid shape.
-    // For initial layout, use total count for a balanced grid.
-    let columns = CanvasGridLayout.columns(for: positionedCount > 0 ? positionedCount : cardKeys.count)
-    let grid = CanvasGridLayout(spacing: layoutMetrics.cardSpacing, titleBarHeight: titleBarHeight)
-
-    // Build locally, assign once to trigger a single save.
+    guard !unpositioned.isEmpty else { return [] }
     let cardSize = adaptiveDefaultCardSize
-    var layouts = layoutStore.cardLayouts
-    for (offset, key) in unpositioned.enumerated() {
-      layouts[key] = CanvasCardLayout(
-        position: grid.position(index: positionedCount + offset, columns: columns, cardSize: cardSize),
-        size: cardSize
-      )
+
+    guard unpositioned.count < cardKeys.count else {
+      let grid = CanvasGridLayout(spacing: layoutMetrics.cardSpacing, titleBarHeight: titleBarHeight)
+      layoutStore.setCardLayouts(
+        layoutStore.cardLayouts.merging(grid.layout(keys: unpositioned, cardSize: cardSize)) { _, new in new })
+      return []
     }
-    layoutStore.setCardLayouts(layouts)
+
+    // Every stored card is an obstacle, including ones not on the canvas right
+    // now: they come back where they were.
+    let placement = CanvasCardPlacement(spacing: layoutMetrics.cardSpacing, titleBarHeight: titleBarHeight)
+    let placed = placement.place(
+      unpositioned.map { CanvasCardPlacement.NewCard(key: $0, size: cardSize) },
+      existing: layoutStore.cardLayouts,
+      anchorKey: selectionState.primaryTabID?.canvasCardKey
+    )
+    // Assign once to trigger a single save.
+    layoutStore.setCardLayouts(layoutStore.cardLayouts.merging(placed) { _, new in new })
+    return unpositioned
+  }
+
+  /// A tab created selected — ⌘T, the palette, the sidebar, the CLI without
+  /// `--background` — takes canvas focus as soon as its card is placed and is
+  /// revealed, so the user always sees what they created. Focusing it in the
+  /// same pass that placed it also makes it the anchor for the next new card,
+  /// however quickly that one follows. Background creations are not selected
+  /// in their worktree and leave focus alone.
+  func followNewCard(among placedKeys: [String], states: [WorktreeTerminalState]) {
+    guard !placedKeys.isEmpty else { return }
+    let placed = Set(placedKeys)
+    let newSelectedCard = canvasCards(in: states).last { card in
+      placed.contains(card.key)
+        && states.first { $0.worktreeID == card.worktreeID }?.tabManager.selectedTabId == card.tabID
+    }
+    guard let newSelectedCard else { return }
+    focusSingleCard(newSelectedCard.tabID, states: states)
+    revealCard(newSelectedCard.tabID, allowsZoomOut: true)
   }
 
   /// Compute effective center and size accounting for resize only (not drag).
@@ -746,7 +776,7 @@ struct CanvasView: View {
     guard let currentTabID = selectionState.primaryTabID else {
       if let first = cards.first {
         focusSingleCard(first.tabID, states: activeStates)
-        scrollToRevealCard(first.tabID)
+        revealCard(first.tabID, allowsZoomOut: false)
       }
       return !cards.isEmpty
     }
@@ -767,39 +797,8 @@ struct CanvasView: View {
     }
 
     focusSingleCard(target.tabID, states: activeStates)
-    scrollToRevealCard(target.tabID)
+    revealCard(target.tabID, allowsZoomOut: false)
     return true
-  }
-
-  /// Pan, without zooming, just enough to bring the card fully on screen.
-  private func scrollToRevealCard(_ tabID: TerminalTabID) {
-    guard viewportSize.width > 0, viewportSize.height > 0,
-      let layout = layoutStore.cardLayouts[tabID.canvasCardKey]
-    else { return }
-
-    let delta = CanvasViewportMath.revealDelta(
-      for: screenRect(for: layout),
-      viewport: viewportSize,
-      bottomReserve: bottomToolbarReserve,
-      margin: 20
-    )
-    guard delta != .zero else { return }
-
-    animateViewport(
-      to: CanvasViewportAnimator.Snapshot(
-        offset: CGSize(width: canvasOffset.width + delta.width, height: canvasOffset.height + delta.height),
-        scale: canvasScale
-      ))
-  }
-
-  private func screenRect(for layout: CanvasCardLayout) -> CGRect {
-    let rect = layout.frame(titleBarHeight: titleBarHeight)
-    return CGRect(
-      x: rect.minX * canvasScale + canvasOffset.width,
-      y: rect.minY * canvasScale + canvasOffset.height,
-      width: rect.width * canvasScale,
-      height: rect.height * canvasScale
-    )
   }
 
   // MARK: - Expand In Place

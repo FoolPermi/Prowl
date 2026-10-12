@@ -799,7 +799,9 @@ pane="$(prowl create tab "$wt" --json | jq -r '.data.target.pane.id')"
 
 Without `--background`, the new tab takes focus, so keystrokes a person is typing
 at that moment land in the new shell. Use `--background` to preserve the current
-selection and focus for both Shell and Agent Profile tabs.
+selection and focus for both Shell and Agent Profile tabs. While Canvas is showing,
+Prowl stays in Canvas: the new card is placed next to the focused card, takes focus,
+and is scrolled into view.
 
 Add `--profile <name|uuid>` to launch an enabled Agent Profile instead of a shell. An
 optional kickoff prompt uses the sole stdin spelling `--prompt -`:

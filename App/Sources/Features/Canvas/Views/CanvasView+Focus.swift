@@ -61,7 +61,12 @@ extension CanvasView {
     )
     guard let tabID else { return }
     focusSingleCard(tabID, states: states)
-    focusViewport(on: tabID)
+    switch request.viewport {
+    case .center:
+      focusViewport(on: tabID)
+    case .reveal:
+      revealCard(tabID, allowsZoomOut: true)
+    }
     onFocusRequestConsumed(request.id)
   }
 
@@ -88,6 +93,27 @@ extension CanvasView {
       height: (viewportSize.height - bottomToolbarReserve) / 2 - layout.position.y * targetScale
     )
     animateViewport(to: CanvasViewportAnimator.Snapshot(offset: targetOffset, scale: targetScale))
+  }
+
+  /// Bring a card into view with the least change: pan if it fits at the
+  /// current zoom. A card that does not fit is zoomed out to fit when
+  /// `allowsZoomOut` (new cards); otherwise the zoom the user chose is kept
+  /// (spatial navigation).
+  func revealCard(_ tabID: TerminalTabID, allowsZoomOut: Bool) {
+    guard let layout = layoutStore.cardLayouts[tabID.canvasCardKey],
+      let target = CanvasViewportMath.reveal(
+        cardFrame: layout.frame(titleBarHeight: titleBarHeight),
+        in: CanvasViewportMath.Viewport(
+          size: viewportSize,
+          scale: canvasScale,
+          offset: canvasOffset,
+          bottomReserve: bottomToolbarReserve
+        ),
+        margin: revealMargin,
+        allowsZoomOut: allowsZoomOut
+      )
+    else { return }
+    animateViewport(to: CanvasViewportAnimator.Snapshot(offset: target.offset, scale: target.scale))
   }
 
   func handleSelectionShieldTap(

@@ -228,6 +228,61 @@ enum CanvasViewportMath {
     )
   }
 
+  /// The canvas transform and the visible area it is shown in.
+  struct Viewport: Equatable {
+    var size: CGSize
+    var scale: CGFloat
+    var offset: CGSize
+    /// Height kept clear at the bottom for the canvas toolbar.
+    var bottomReserve: CGFloat
+  }
+
+  /// Viewport that brings `cardFrame` (canvas coordinates) into view with the
+  /// least change from the current one: a pure pan when the card fits at the
+  /// current scale. When it does not fit, `allowsZoomOut` zooms out just
+  /// enough and centers the card; otherwise the pan aligns the card's leading
+  /// edges. Returns nil when no change is needed.
+  static func reveal(
+    cardFrame: CGRect,
+    in viewport: Viewport,
+    margin: CGFloat,
+    allowsZoomOut: Bool
+  ) -> FitResult? {
+    let size = viewport.size
+    let scale = viewport.scale
+    guard size.width > 0, size.height > 0, scale > 0, !cardFrame.isNull else { return nil }
+    let visibleWidth = max(1, size.width - margin * 2)
+    let visibleHeight = max(1, size.height - viewport.bottomReserve - margin * 2)
+    let fits = cardFrame.width * scale <= visibleWidth && cardFrame.height * scale <= visibleHeight
+
+    if fits || !allowsZoomOut {
+      let screenFrame = CGRect(
+        x: cardFrame.minX * scale + viewport.offset.width,
+        y: cardFrame.minY * scale + viewport.offset.height,
+        width: cardFrame.width * scale,
+        height: cardFrame.height * scale
+      )
+      let delta = revealDelta(for: screenFrame, viewport: size, bottomReserve: viewport.bottomReserve, margin: margin)
+      guard delta != .zero else { return nil }
+      return FitResult(
+        scale: scale,
+        offset: CGSize(width: viewport.offset.width + delta.width, height: viewport.offset.height + delta.height)
+      )
+    }
+
+    let fittedScale = max(
+      CanvasZoomMath.minScale,
+      min(scale, visibleWidth / cardFrame.width, visibleHeight / cardFrame.height)
+    )
+    return FitResult(
+      scale: fittedScale,
+      offset: CGSize(
+        width: size.width / 2 - cardFrame.midX * fittedScale,
+        height: (size.height - viewport.bottomReserve) / 2 - cardFrame.midY * fittedScale
+      )
+    )
+  }
+
   static func revealDelta(
     for cardRect: CGRect,
     viewport: CGSize,
