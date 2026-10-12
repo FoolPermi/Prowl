@@ -32,10 +32,17 @@ changes.
 - `CanvasLayoutStore.hasAutoArrangedInSession` / `shouldAutoArrangeOnInitialEntry`
   are renamed `hasAppliedInitialLayoutInSession` / `shouldApplyInitialLayout`.
 
-One deliberate normalization: every layout now merges its result into the
-stored layouts. Organize already merged; Arrange and Tile used to replace the
-whole dictionary, dropping entries for cards not currently on the canvas.
-Those entries are pruned by the existing stale-layout cleanup anyway.
+One deliberate normalization: every layout now stores its result through
+`CanvasLayoutStore.applyLayouts(_:order:)`, which merges into the stored
+layouts. Organize already merged; Arrange and Tile used to replace the whole
+dictionary, dropping entries for cards not currently on the canvas (for
+example, tabs of a worktree whose terminal state is not loaded). Kept entries
+stay below the laid-out cards in the stacking order.
+
+The command palette keeps one item kind per command, following its own
+architecture ([031](../031-command-palette-architecture/000-plan.md)); only the
+request it sends to Canvas (`CanvasCommandRequest.Command.layout(kind)`) is
+unified.
 
 ## Verification
 
@@ -43,6 +50,8 @@ Those entries are pruned by the existing stale-layout cleanup anyway.
   every kind lays out every card without overlap, Organize equals the grid,
   Arrange preserves sizes, Tile fills the viewport, grid math, card frame, and
   the persisted keybinding IDs.
+- `CanvasLayoutStoreTests.applyLayoutsKeepsUncoveredCardsBelowTheLaidOutOnes`
+  covers the merge and stacking order.
 - Full `make test` and `make check` pass.
 - Prowl Debug (isolated data directory): entering Canvas with four cards
   applies the default Tile layout; ⌘⌥G, ⌘⌥R, and ⌘⌥T produce the expected

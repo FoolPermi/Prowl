@@ -7,7 +7,7 @@ import Foundation
 /// - `arrange`: bin-pack the cards, preserving each card's size.
 /// - `organize`: reset every card to the default size in a √N grid.
 /// - `tile`: resize every card so the set tiles and fills the viewport.
-enum CanvasLayoutKind: String, CaseIterable, Codable, Sendable {
+enum CanvasLayoutKind: String, CaseIterable, Sendable {
   case arrange
   case organize
   case tile

@@ -31,8 +31,8 @@ extension CanvasCardLayout {
   }
 }
 
-/// Computes card layouts for a `CanvasLayoutKind`. Pure and `@MainActor`-free so
-/// every layout is testable without a view.
+/// Computes card layouts for a `CanvasLayoutKind`. Pure (it reads no view
+/// state), so every layout is testable without a view.
 enum CanvasLayoutEngine {
   struct Input: Equatable {
     /// Cards to lay out, in canvas order (worktree order, then tab order).
@@ -45,17 +45,20 @@ enum CanvasLayoutEngine {
   }
 
   /// Layouts for every key in `input`, or an empty dictionary when there is
-  /// nothing to lay out (no keys or a degenerate viewport). Callers treat an
-  /// empty result as a no-op.
+  /// nothing to lay out: no keys, or — for the viewport-shaped Arrange and
+  /// Tile — a viewport that has not been measured yet. Organize ignores the
+  /// viewport. Callers treat an empty result as a no-op.
   static func layouts(
     for kind: CanvasLayoutKind,
     input: Input,
     metrics: CanvasLayoutMetrics = .standard
   ) -> [String: CanvasCardLayout] {
-    guard !input.keys.isEmpty, input.viewport.width > 0, input.viewport.height > 0 else { return [:] }
+    guard !input.keys.isEmpty else { return [:] }
+    let hasViewport = input.viewport.width > 0 && input.viewport.height > 0
 
     switch kind {
     case .arrange:
+      guard hasViewport else { return [:] }
       let cards = input.keys.map { key in
         CanvasCardPacker.CardInfo(key: key, size: input.cardSizes[key] ?? input.defaultCardSize)
       }
@@ -67,6 +70,7 @@ enum CanvasLayoutEngine {
       return grid.layout(keys: input.keys, cardSize: input.defaultCardSize)
 
     case .tile:
+      guard hasViewport else { return [:] }
       let comfortableSize = CGSize(
         width: input.defaultCardSize.width * metrics.tileComfortableFraction,
         height: input.defaultCardSize.height * metrics.tileComfortableFraction

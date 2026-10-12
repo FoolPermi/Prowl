@@ -104,6 +104,17 @@ final class CanvasLayoutStore {
     zOrder = normalizedZOrder(newZOrder ?? zOrder, visibleKeys: Array(layouts.keys))
   }
 
+  /// Store the result of an automatic layout. `layouts` replaces the entries of
+  /// the cards it covers; entries for other cards (not on the canvas right now)
+  /// are kept. `order` becomes the stacking order of the laid-out cards, above
+  /// any card the layout did not cover.
+  func applyLayouts(_ layouts: [String: CanvasCardLayout], order: [String]) {
+    let merged = cardLayouts.merging(layouts) { _, new in new }
+    let laidOut = Set(order)
+    let untouched = zOrder.filter { !laidOut.contains($0) && merged[$0] != nil }
+    setCardLayouts(merged, zOrder: untouched + order)
+  }
+
   func ensureZOrder(for visibleKeys: [String]) {
     zOrder = normalizedZOrder(zOrder, visibleKeys: visibleKeys)
   }

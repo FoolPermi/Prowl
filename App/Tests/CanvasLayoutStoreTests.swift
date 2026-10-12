@@ -67,6 +67,32 @@ struct CanvasLayoutStoreTests {
     #expect(restoredStore.shouldApplyInitialLayout(for: ["tab-c", "tab-d"]))
   }
 
+  @Test func applyLayoutsKeepsUncoveredCardsBelowTheLaidOutOnes() {
+    let defaults = makeDefaults()
+    defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+    let store = CanvasLayoutStore(defaults: defaults)
+    let hidden = CanvasCardLayout(position: CGPoint(x: 5, y: 5))
+    store.setCardLayouts(
+      [
+        "tab-a": CanvasCardLayout(position: .zero),
+        "tab-hidden": hidden,
+        "tab-b": CanvasCardLayout(position: .zero),
+      ],
+      zOrder: ["tab-a", "tab-hidden", "tab-b"]
+    )
+
+    let laidOut = [
+      "tab-a": CanvasCardLayout(position: CGPoint(x: 100, y: 100)),
+      "tab-b": CanvasCardLayout(position: CGPoint(x: 200, y: 200)),
+    ]
+    store.applyLayouts(laidOut, order: ["tab-b", "tab-a"])
+
+    #expect(store.cardLayouts["tab-a"] == laidOut["tab-a"])
+    #expect(store.cardLayouts["tab-b"] == laidOut["tab-b"])
+    #expect(store.cardLayouts["tab-hidden"] == hidden)
+    #expect(store.zOrder == ["tab-hidden", "tab-b", "tab-a"])
+  }
+
   @Test func moveToFrontPersistsZOrder() {
     let defaults = makeDefaults()
     defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }

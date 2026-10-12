@@ -18,11 +18,17 @@ struct CanvasLayoutEngineTests {
     #expect(CanvasLayoutEngine.layouts(for: kind, input: input(keys: [])).isEmpty)
   }
 
-  @Test(arguments: CanvasLayoutKind.allCases)
-  func unmeasuredViewportProducesNoLayouts(kind: CanvasLayoutKind) {
+  @Test(arguments: [CanvasLayoutKind.arrange, .tile])
+  func viewportShapedLayoutsWaitForAMeasuredViewport(kind: CanvasLayoutKind) {
     var input = input(keys: ["a", "b"])
     input.viewport = .zero
     #expect(CanvasLayoutEngine.layouts(for: kind, input: input).isEmpty)
+  }
+
+  @Test func organizeIgnoresTheViewport() {
+    var input = input(keys: ["a", "b"])
+    input.viewport = .zero
+    #expect(CanvasLayoutEngine.layouts(for: .organize, input: input).count == 2)
   }
 
   @Test(arguments: CanvasLayoutKind.allCases)
@@ -58,6 +64,43 @@ struct CanvasLayoutEngineTests {
 
     #expect(layouts["a"]?.size == custom)
     #expect(layouts["b"]?.size == defaultSize)
+  }
+
+  @Test func arrangeKeepsMixedSizesApart() {
+    let keys = (0..<6).map { "card-\($0)" }
+    let sizes: [String: CGSize] = [
+      "card-0": CGSize(width: 1800, height: 300),
+      "card-1": CGSize(width: 400, height: 1200),
+      "card-2": CGSize(width: 900, height: 900),
+      "card-3": CGSize(width: 300, height: 200),
+      "card-4": CGSize(width: 1400, height: 700),
+    ]
+    let layouts = CanvasLayoutEngine.layouts(for: .arrange, input: input(keys: keys, sizes: sizes))
+
+    let frames = keys.compactMap { layouts[$0]?.frame(titleBarHeight: metrics.titleBarHeight) }
+    #expect(frames.count == keys.count)
+    for (index, frame) in frames.enumerated() {
+      for other in frames[(index + 1)...] {
+        #expect(!frame.intersects(other))
+      }
+    }
+    for (key, size) in sizes {
+      #expect(layouts[key]?.size == size)
+    }
+  }
+
+  @Test func tileScalesItsFrameUpForManyCards() {
+    let keys = (0..<16).map { "card-\($0)" }
+    let layouts = CanvasLayoutEngine.layouts(for: .tile, input: input(keys: keys))
+
+    // 16 cards in a 1600×1000 viewport would be far below the comfortable
+    // size (60% of the default card), so the tile frame grows past the viewport.
+    let bounds = layouts.values.reduce(CGRect.null) { $0.union($1.frame(titleBarHeight: metrics.titleBarHeight)) }
+    #expect(bounds.width > viewport.width)
+    #expect(
+      layouts.values.allSatisfy {
+        $0.size.width >= defaultSize.width * metrics.tileComfortableFraction - metrics.tileCardSpacing * 2
+      })
   }
 
   @Test func tileFillsTheViewportFrame() {

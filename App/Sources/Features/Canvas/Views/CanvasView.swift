@@ -14,7 +14,7 @@ struct CanvasView: View {
   var repositoryCustomTitles: [Repository.ID: String] = [:]
   var focusRequest: CanvasFocusRequest?
   /// A one-shot, reducer-driven request to run a view-local canvas command
-  /// (expand/arrange/organize/select-all), e.g. from the command palette.
+  /// (expand, layout, select-all, navigate), e.g. from the command palette.
   var commandRequest: CanvasCommandRequest?
   var onFocusedWorktreeChanged: (Worktree.ID?) -> Void = { _ in }
   var onFocusRequestConsumed: (Int) -> Void = { _ in }
@@ -235,7 +235,7 @@ struct CanvasView: View {
     ZStack(alignment: .topLeading) {
       ForEach(activeStates, id: \.worktreeID) { state in
         ForEach(state.tabManager.tabs) { tab in
-          if state.surfaceView(for: tab.id) != nil {
+          if state.hasCanvasCard(tab.id) {
             cardView(for: tab, in: state, activeStates: activeStates)
           }
         }
@@ -532,9 +532,7 @@ struct CanvasView: View {
   func canvasCards(in states: [WorktreeTerminalState]) -> [CanvasCardRef] {
     states.flatMap { state in
       state.tabManager.tabs.compactMap { tab in
-        state.surfaceView(for: tab.id) != nil
-          ? CanvasCardRef(worktreeID: state.worktreeID, tabID: tab.id)
-          : nil
+        state.hasCanvasCard(tab.id) ? CanvasCardRef(worktreeID: state.worktreeID, tabID: tab.id) : nil
       }
     }
   }
@@ -561,7 +559,7 @@ struct CanvasView: View {
     )
     let layouts = CanvasLayoutEngine.layouts(for: kind, input: input, metrics: layoutMetrics)
     guard !layouts.isEmpty else { return }
-    layoutStore.setCardLayouts(layoutStore.cardLayouts.merging(layouts) { _, new in new }, zOrder: keys)
+    layoutStore.applyLayouts(layouts, order: keys)
   }
 
   /// Lay out every card with `kind` and refit the viewport, animated. Shared by
@@ -604,14 +602,18 @@ struct CanvasView: View {
 
   /// Animate the viewport to `target` with `viewportAnimator`, which drives
   /// the transform frame by frame (a SwiftUI animation would not reach the
-  /// scroll container's bindings).
+  /// scroll container's bindings). A pan-only animation never writes the
+  /// scale, so it cannot fight a zoom gesture that is in progress.
   func animateViewport(to target: CanvasViewportAnimator.Snapshot) {
     let start = CanvasViewportAnimator.Snapshot(offset: canvasOffset, scale: canvasScale)
+    let animatesScale = start.scale != target.scale
     viewportAnimator.animate(from: start, to: target) { [self] snapshot in
       canvasOffset = snapshot.offset
       lastCanvasOffset = snapshot.offset
-      canvasScale = snapshot.scale
-      lastCanvasScale = snapshot.scale
+      if animatesScale {
+        canvasScale = snapshot.scale
+        lastCanvasScale = snapshot.scale
+      }
     }
   }
 
@@ -878,5 +880,12 @@ extension View {
       action()
       return .handled
     }
+  }
+}
+
+extension WorktreeTerminalState {
+  /// A tab is a Canvas card once its surface exists.
+  fileprivate func hasCanvasCard(_ tabID: TerminalTabID) -> Bool {
+    surfaceView(for: tabID) != nil
   }
 }
