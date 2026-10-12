@@ -67,10 +67,6 @@ struct CanvasCardLayout: Codable, Equatable, Hashable, Sendable {
 final class CanvasLayoutStore {
   private static let storageKey = "canvasCardLayouts"
 
-  /// Whether the initial auto-layout has run in this app session. Resets on app
-  /// launch and when the last card closes.
-  static var hasAppliedInitialLayoutInSession = false
-
   private let defaults: UserDefaults
   private let initiallyLoadedCardKeys: Set<String>
 
@@ -82,11 +78,19 @@ final class CanvasLayoutStore {
     didSet { save() }
   }
 
+  /// The remembered layout mode; nil until the canvas first lays out cards.
+  /// Layouts stored before modes existed load as `freeform`, so upgrading never
+  /// rearranges a canvas the user arranged.
+  var mode: CanvasLayoutMode? {
+    didSet { save() }
+  }
+
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
     let stored = Self.load(from: defaults)
     cardLayouts = stored.cardLayouts
     zOrder = stored.zOrder
+    mode = stored.mode ?? (stored.cardLayouts.isEmpty ? nil : .freeform)
     initiallyLoadedCardKeys = Set(stored.cardLayouts.keys)
   }
 
@@ -94,9 +98,17 @@ final class CanvasLayoutStore {
   // hit the TaskLocal invalid-free bug in older system Swift runtimes (swiftlang/swift#85204).
   nonisolated deinit {}
 
-  func shouldApplyInitialLayout(for cardKeys: [String]) -> Bool {
-    guard !cardKeys.isEmpty else { return false }
-    return !cardKeys.contains { initiallyLoadedCardKeys.contains($0) }
+  /// Resolve the layout for entering Canvas with `cardKeys` on screen. A canvas
+  /// that never chose a mode, or whose cards were all unknown when it loaded,
+  /// starts in `defaultKind`. Returns the automatic layout to apply, or nil in
+  /// freeform.
+  func layoutForEntry(cardKeys: [String], defaultKind: CanvasLayoutKind) -> CanvasLayoutKind? {
+    guard !cardKeys.isEmpty else { return nil }
+    let isFreshCanvas = !cardKeys.contains { initiallyLoadedCardKeys.contains($0) }
+    if mode == nil || isFreshCanvas {
+      mode = .automatic(defaultKind)
+    }
+    return mode?.automaticKind
   }
 
   func setCardLayouts(_ layouts: [String: CanvasCardLayout], zOrder newZOrder: [String]? = nil) {
@@ -143,7 +155,8 @@ final class CanvasLayoutStore {
     if let payload = try? JSONDecoder().decode(CanvasLayoutStoragePayload.self, from: data) {
       return CanvasLayoutStoragePayload(
         cardLayouts: payload.cardLayouts,
-        zOrder: normalizedZOrder(payload.zOrder, visibleKeys: Array(payload.cardLayouts.keys))
+        zOrder: normalizedZOrder(payload.zOrder, visibleKeys: Array(payload.cardLayouts.keys)),
+        mode: payload.mode
       )
     }
 
@@ -157,7 +170,8 @@ final class CanvasLayoutStore {
   private func save() {
     let payload = CanvasLayoutStoragePayload(
       cardLayouts: cardLayouts,
-      zOrder: Self.normalizedZOrder(zOrder, visibleKeys: Array(cardLayouts.keys))
+      zOrder: Self.normalizedZOrder(zOrder, visibleKeys: Array(cardLayouts.keys)),
+      mode: mode
     )
     if let data = try? JSONEncoder().encode(payload) {
       defaults.set(data, forKey: Self.storageKey)
@@ -185,4 +199,19 @@ final class CanvasLayoutStore {
 private struct CanvasLayoutStoragePayload: Codable, Equatable {
   var cardLayouts: [String: CanvasCardLayout]
   var zOrder: [String]
+  var mode: CanvasLayoutMode?
+
+  init(cardLayouts: [String: CanvasCardLayout], zOrder: [String], mode: CanvasLayoutMode? = nil) {
+    self.cardLayouts = cardLayouts
+    self.zOrder = zOrder
+    self.mode = mode
+  }
+
+  init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    cardLayouts = try container.decode([String: CanvasCardLayout].self, forKey: .cardLayouts)
+    zOrder = try container.decode([String].self, forKey: .zOrder)
+    // A mode written by a newer version must not discard the card layouts.
+    mode = try? container.decodeIfPresent(CanvasLayoutMode.self, forKey: .mode)
+  }
 }

@@ -7,7 +7,7 @@ import Foundation
 /// - `arrange`: bin-pack the cards, preserving each card's size.
 /// - `organize`: reset every card to the default size in a √N grid.
 /// - `tile`: resize every card so the set tiles and fills the viewport.
-enum CanvasLayoutKind: String, CaseIterable, Sendable {
+enum CanvasLayoutKind: String, CaseIterable, Codable, Sendable {
   case arrange
   case organize
   case tile
@@ -55,6 +55,15 @@ enum CanvasLayoutKind: String, CaseIterable, Sendable {
     case .arrange: "Arrange cards preserving sizes"
     case .organize: "Organize cards in a uniform grid"
     case .tile: "Tile cards to fill the canvas"
+    }
+  }
+
+  /// Tooltip while this layout is the active automatic mode.
+  var activeHelpTitle: LocalizedStringResource {
+    switch self {
+    case .arrange: "Arranging: cards re-arrange as they are added or closed"
+    case .organize: "Organizing: cards keep the grid as they are added or closed"
+    case .tile: "Tiling: cards re-tile as they are added or closed"
     }
   }
 }

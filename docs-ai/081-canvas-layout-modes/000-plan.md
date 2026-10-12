@@ -142,3 +142,4 @@ Once a layout ran, Canvas forgot it. Three problems followed:
 
 - Updated 2026-10-12: S0 consolidation shipped — see [002-s0-consolidation.md](002-s0-consolidation.md)
 - Updated 2026-10-12: S1 placement and following new cards — see [003-s1-placement.md](003-s1-placement.md)
+- Updated 2026-10-12: S2 remembered layout modes — see [004-s2-layout-modes.md](004-s2-layout-modes.md)

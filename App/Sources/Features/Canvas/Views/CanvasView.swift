@@ -34,6 +34,11 @@ struct CanvasView: View {
   @State var lastTitleBarTapDate: Date = .distantPast
   @State var activeResize: [TerminalTabID: ActiveResize] = [:]
   @State var hasPerformedInitialFit = false
+  /// Viewport size the current automatic layout was computed for.
+  @State var automaticLayoutViewportSize: CGSize = .zero
+  /// A card-set change arrived while a relayout could not run (a card was
+  /// expanded); apply the automatic layout once it is restored.
+  @State var needsAutomaticRelayout = false
   @State var hasSeenCanvasCards = false
   @State var viewportSize: CGSize = .zero
   @State var configReloadCounter = 0
@@ -120,15 +125,13 @@ struct CanvasView: View {
           }
           .onChange(of: allCardKeys) { _, newKeys in
             if newKeys.isEmpty {
-              CanvasLayoutStore.hasAppliedInitialLayoutInSession = false
               if hasSeenCanvasCards {
                 layoutStore.prune(to: [])
               }
             } else {
               hasSeenCanvasCards = true
             }
-            let placedNextToOthers = placeUnpositionedCards(newKeys)
-            followNewCard(among: placedNextToOthers, states: terminalManager.activeWorktreeStates)
+            handleCardSetChange(to: newKeys)
             if !newKeys.isEmpty {
               layoutStore.ensureZOrder(for: newKeys)
             }
@@ -159,17 +162,10 @@ struct CanvasView: View {
         proxy.size
       } action: { newSize in
         viewportSize = newSize
-        let currentCardKeys = currentCardKeys()
-        if !hasPerformedInitialFit, !currentCardKeys.isEmpty {
-          hasPerformedInitialFit = true
-          if !CanvasLayoutStore.hasAppliedInitialLayoutInSession {
-            CanvasLayoutStore.hasAppliedInitialLayoutInSession = true
-            if layoutStore.shouldApplyInitialLayout(for: currentCardKeys) {
-              layoutCards(settingsFile.global.canvasDefaultLayout.layoutKind)
-            }
-          }
-          fitToView(canvasSize: newSize)
-        }
+        performEntryLayoutIfNeeded()
+      }
+      .task(id: viewportSize) {
+        await relayoutAfterViewportChange()
       }
     }
     .overlay(alignment: .bottomTrailing) {
@@ -463,67 +459,7 @@ struct CanvasView: View {
       }
   }
 
-  // MARK: - Layout
-
-  /// Give every card that has no stored layout a position. On a fresh canvas
-  /// the cards form a balanced grid; after that, each new card goes to a free
-  /// spot next to the focused card without moving any other card.
-  ///
-  /// Returns the keys that were placed, in canvas order.
-  @discardableResult
-  func placeUnpositionedCards(_ cardKeys: [String]) -> [String] {
-    let unpositioned = cardKeys.filter { layoutStore.cardLayouts[$0] == nil }
-    guard !unpositioned.isEmpty else { return [] }
-    let cardSize = adaptiveDefaultCardSize
-
-    guard unpositioned.count < cardKeys.count else {
-      let grid = CanvasGridLayout(spacing: layoutMetrics.cardSpacing, titleBarHeight: titleBarHeight)
-      layoutStore.setCardLayouts(
-        layoutStore.cardLayouts.merging(grid.layout(keys: unpositioned, cardSize: cardSize)) { _, new in new })
-      return unpositioned
-    }
-
-    // Every stored card is an obstacle, including ones not on the canvas right
-    // now: they come back where they were.
-    let placement = CanvasCardPlacement(spacing: layoutMetrics.cardSpacing, titleBarHeight: titleBarHeight)
-    let placed = placement.place(
-      unpositioned.map { CanvasCardPlacement.NewCard(key: $0, size: cardSize) },
-      existing: layoutStore.cardLayouts,
-      anchorKey: selectionState.primaryTabID?.canvasCardKey
-    )
-    // Assign once to trigger a single save.
-    layoutStore.setCardLayouts(layoutStore.cardLayouts.merging(placed) { _, new in new })
-    return unpositioned
-  }
-
-  /// A tab created in the foreground — ⌘T, the palette, the sidebar, the CLI
-  /// without `--background` — takes canvas focus as soon as its card is placed
-  /// and is revealed, so the user always sees what they created. Focusing it in
-  /// the same pass that placed it also makes it the anchor for the next new
-  /// card, however quickly that one follows. Background creations leave focus
-  /// and the view alone.
-  func followNewCard(among placedKeys: [String], states: [WorktreeTerminalState]) {
-    guard !placedKeys.isEmpty else { return }
-    let newKeys = Set(placedKeys)
-    let foregroundTabIDs = Set(states.compactMap(\.lastForegroundCreatedTabID))
-    let card = CanvasNewCardFocus.cardToFollow(
-      newKeys: newKeys,
-      cards: canvasCards(in: states),
-      foregroundTabIDs: foregroundTabIDs
-    )
-    // Claim the foreground marks of the cards placed now.
-    for state in states {
-      if let tabID = state.lastForegroundCreatedTabID, newKeys.contains(tabID.canvasCardKey) {
-        state.lastForegroundCreatedTabID = nil
-      }
-    }
-    guard let card else { return }
-    // ⌘T inside an expanded card: show the new card instead of hiding it behind
-    // the expansion.
-    collapseExpand()
-    focusSingleCard(card.tabID, states: states)
-    revealCard(card.tabID, allowsZoomOut: true)
-  }
+  // MARK: - Card Geometry
 
   /// Compute effective center and size accounting for resize only (not drag).
   /// Drag is applied separately via `.offset()` to avoid layout passes.
@@ -568,105 +504,6 @@ struct CanvasView: View {
     max(minCardHeight, min(maxCardHeight, height))
   }
 
-  // MARK: - Cards
-
-  /// Every card on the canvas, in canvas order: worktree order, then tab order.
-  /// A tab is a card only once its surface exists.
-  func canvasCards(in states: [WorktreeTerminalState]) -> [CanvasCardRef] {
-    states.flatMap { state in
-      state.tabManager.tabs.compactMap { tab in
-        state.hasCanvasCard(tab.id) ? CanvasCardRef(worktreeID: state.worktreeID, tabID: tab.id) : nil
-      }
-    }
-  }
-
-  func currentCardKeys() -> [String] {
-    canvasCards(in: terminalManager.activeWorktreeStates).map(\.key)
-  }
-
-  // MARK: - Automatic Layouts
-
-  func layoutShortcut(_ kind: CanvasLayoutKind) -> AppShortcut? {
-    AppShortcuts.resolvedShortcut(for: kind.commandID, in: resolvedKeybindings)
-  }
-
-  /// Lay out every card with `kind`, without touching the viewport. A no-op
-  /// when there are no cards or the viewport has not been measured yet.
-  func layoutCards(_ kind: CanvasLayoutKind) {
-    let keys = currentCardKeys()
-    let input = CanvasLayoutEngine.Input(
-      keys: keys,
-      cardSizes: layoutStore.cardLayouts.mapValues(\.size),
-      viewport: viewportSize,
-      defaultCardSize: adaptiveDefaultCardSize
-    )
-    let layouts = CanvasLayoutEngine.layouts(for: kind, input: input, metrics: layoutMetrics)
-    guard !layouts.isEmpty else { return }
-    layoutStore.applyLayouts(layouts, order: keys)
-  }
-
-  /// Lay out every card with `kind` and refit the viewport, animated. Shared by
-  /// the toolbar buttons, the keyboard shortcuts, and the command palette.
-  func applyLayout(_ kind: CanvasLayoutKind) {
-    withAnimation(expandAnimation) {
-      cancelExpandForRelayout()
-      layoutCards(kind)
-      fitToView(canvasSize: viewportSize)
-    }
-  }
-
-  // MARK: - Viewport
-
-  /// Adjust scale and offset so all cards fit within the viewport.
-  func fitToView(canvasSize: CGSize) {
-    guard canvasSize.width > 0, canvasSize.height > 0 else { return }
-
-    let bounds = currentCardKeys().reduce(CGRect.null) { bounds, key in
-      guard let layout = layoutStore.cardLayouts[key] else { return bounds }
-      return bounds.union(layout.frame(titleBarHeight: titleBarHeight))
-    }
-
-    guard
-      let fit = CanvasViewportMath.fit(
-        bounds: bounds,
-        viewport: canvasSize,
-        bottomReserve: bottomToolbarReserve,
-        padding: viewportFitPadding
-      )
-    else {
-      return
-    }
-
-    canvasOffset = fit.offset
-    canvasScale = fit.scale
-    lastCanvasScale = fit.scale
-    lastCanvasOffset = canvasOffset
-  }
-
-  /// Animate the viewport to `target` with `viewportAnimator`, which drives
-  /// the transform frame by frame (a SwiftUI animation would not reach the
-  /// scroll container's bindings). A pan-only animation never writes the
-  /// scale, so it cannot fight a zoom gesture that is in progress.
-  func animateViewport(to target: CanvasViewportAnimator.Snapshot) {
-    let start = CanvasViewportAnimator.Snapshot(offset: canvasOffset, scale: canvasScale)
-    let animatesScale = start.scale != target.scale
-    viewportAnimator.animate(from: start, to: target) { [self] snapshot in
-      canvasOffset = snapshot.offset
-      lastCanvasOffset = snapshot.offset
-      if animatesScale {
-        canvasScale = snapshot.scale
-        lastCanvasScale = snapshot.scale
-      }
-    }
-  }
-
-  /// Remove stored layouts for tabs that no longer exist.
-  func cleanStaleLayouts() {
-    let visibleKeys = Set(currentCardKeys())
-    guard !visibleKeys.isEmpty || hasSeenCanvasCards else { return }
-    layoutStore.prune(to: visibleKeys)
-  }
-
   var canvasToolbar: some View {
     // Two visual groups: selection (broadcast / select-all) and the three layout
     // actions. A wider gap separates the groups; the layout trio is tucked tight.
@@ -701,19 +538,33 @@ struct CanvasView: View {
 
       HStack(spacing: 4) {
         ForEach(CanvasLayoutKind.allCases, id: \.self) { kind in
-          Button {
-            applyLayout(kind)
-          } label: {
-            Image(systemName: kind.systemImage)
-              .font(.body)
-              .accessibilityLabel(Text(kind.title))
-          }
-          .buttonStyle(.bordered)
-          .help(AppShortcuts.helpText(title: kind.helpTitle, commandID: kind.commandID, in: resolvedKeybindings))
+          layoutButton(kind, isActive: layoutStore.mode?.automaticKind == kind)
         }
       }
     }
     .padding()
+  }
+
+  /// A layout button. The active automatic layout is tinted, so the user can
+  /// tell that new and closed cards will follow it.
+  func layoutButton(_ kind: CanvasLayoutKind, isActive: Bool) -> some View {
+    Button {
+      applyLayout(kind)
+    } label: {
+      Image(systemName: kind.systemImage)
+        .font(.body)
+        .foregroundStyle(isActive ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+        .accessibilityLabel(Text(kind.title))
+    }
+    .buttonStyle(.bordered)
+    .tint(isActive ? Color.accentColor : nil)
+    .accessibilityAddTraits(isActive ? .isSelected : [])
+    .help(
+      AppShortcuts.helpText(
+        title: isActive ? kind.activeHelpTitle : kind.helpTitle,
+        commandID: kind.commandID,
+        in: resolvedKeybindings
+      ))
   }
 
   func zIndex(for tabID: TerminalTabID, cardKey: String) -> Double {
@@ -730,11 +581,11 @@ struct CanvasView: View {
   // MARK: - Drag
 
   func commitDrag(for cardKey: String, translation: CGSize) {
-    if var layout = layoutStore.cardLayouts[cardKey] {
-      layout.position.x += translation.width
-      layout.position.y += translation.height
-      layoutStore.cardLayouts[cardKey] = layout
-    }
+    guard translation != .zero, var layout = layoutStore.cardLayouts[cardKey] else { return }
+    layout.position.x += translation.width
+    layout.position.y += translation.height
+    layoutStore.cardLayouts[cardKey] = layout
+    enterFreeformLayout()
   }
 
   // MARK: - Resize
@@ -750,6 +601,7 @@ struct CanvasView: View {
         layout.size = resized.size
         layoutStore.cardLayouts[cardKey] = layout
       }
+      enterFreeformLayout()
     }
     activeResize[tabID] = nil
     for surface in surfaces {
@@ -892,12 +744,5 @@ extension View {
       action()
       return .handled
     }
-  }
-}
-
-extension WorktreeTerminalState {
-  /// A tab is a Canvas card once its surface exists.
-  fileprivate func hasCanvasCard(_ tabID: TerminalTabID) -> Bool {
-    surfaceView(for: tabID) != nil
   }
 }

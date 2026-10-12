@@ -74,6 +74,24 @@ These also appear as toolbar buttons. There's a `?` help popover (bottom-left)
 explaining pan/zoom/expand — hover the button to reveal it, move away to dismiss,
 or click to pin it open.
 
+### The board remembers your layout
+
+Arrange, Organize, and Tile are **modes**, not one-shot commands. The active one
+is highlighted in the toolbar (its tooltip says so), and Canvas keeps applying it:
+
+- **Adding or closing a card** lays every card out again and fits the view, so
+  a tiled board stays tiled and an organized board stays a grid. New cards
+  appear in place while the others glide to their new spots.
+- **Resizing the window** (or toggling the sidebar) lays the cards out again
+  once the size settles.
+- **While a card is expanded**, nothing moves behind it; the layout catches up
+  when you restore the card.
+
+**Dragging or resizing a card** switches the board to **freeform**: no layout
+button is highlighted, every card stays where you put it, and a new card goes
+to a free spot next to the focused card. Press any layout button to go back to
+an automatic layout. The mode is saved with the card positions.
+
 ## Toolbar actions
 
 The main toolbar tracks the focused card. Its center status area shows the same
@@ -108,10 +126,11 @@ and splits are not acknowledged merely because they are selected or receive broa
 
 - Default card size adapts to screen width (roughly 800×550 on a 14", larger on a
   27"). Cards have generous min/max bounds and snap-animate on resize.
-- On first entry, cards auto-arrange into a balanced grid. Positions, sizes, and
-  z-order are persisted across launches (in `UserDefaults`) and restored when you
-  return to Canvas.
-- **New cards never cover existing ones.** A tab created while Canvas is showing
+- On first entry, cards are laid out with the `canvasDefaultLayout` setting.
+  Positions, sizes, z-order, and the layout mode are persisted across launches
+  (in `UserDefaults`) and restored when you return to Canvas.
+- **New cards never cover existing ones.** In an automatic layout every card is
+  laid out again (see above). In freeform, a tab created while Canvas is showing
   (`⌘T`, New Terminal in the palette, the sidebar, or `prowl create tab`) gets a
   free spot next to the focused card — to its right, else below it, else the
   nearest free spot — without moving any other card. Creating several tabs in a
@@ -133,10 +152,10 @@ performance.
 ## Settings that affect Canvas
 
 - `defaultViewMode` — launch directly into Canvas.
-- `canvasDefaultLayout` — how cards are first laid out when you open Canvas:
-  `uniform` (same-size cards packed to fit) or `tile` (resize cards to fill the
-  screen, the default). Only the initial auto-layout is affected; saved card
-  positions are always restored.
+- `canvasDefaultLayout` — the layout a fresh Canvas starts in: `uniform`
+  (Arrange: same-size cards packed to fit) or `tile` (resize cards to fill the
+  screen, the default). After that, Canvas keeps the layout you last chose, or
+  freeform once you move a card.
 - `windowTintMode` / repository colors — card and nav tinting.
 - `showRunButtonInToolbar` — whether the Run button appears in the Canvas toolbar.
 

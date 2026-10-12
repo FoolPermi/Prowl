@@ -41,6 +41,7 @@ extension CanvasView {
     withAnimation(expandAnimation) {
       expandedTabID = nil
     }
+    relayoutIfDeferred()
   }
 
   /// Drop expand state without animation — used right before a relayout
