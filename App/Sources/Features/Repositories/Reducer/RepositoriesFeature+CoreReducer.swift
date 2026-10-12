@@ -731,6 +731,13 @@ extension RepositoriesFeature {
     case .consumeCanvasCommandRequest(let id):
       if state.pendingCanvasCommandRequest?.id == id {
         state.pendingCanvasCommandRequest = nil
+        state.lastPerformedCanvasCommandRequestID = id
+      }
+      return .none
+
+    case .dropCanvasCommandRequest(let id):
+      if state.pendingCanvasCommandRequest?.id == id {
+        state.pendingCanvasCommandRequest = nil
       }
       return .none
 

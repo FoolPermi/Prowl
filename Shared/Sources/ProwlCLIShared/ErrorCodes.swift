@@ -53,7 +53,7 @@ nonisolated public enum CLIErrorCode {
   public static let canvasFailed = "CANVAS_FAILED"
   /// `canvas layout|fit` while Canvas is hidden and `--show` was not given.
   public static let canvasNotShowing = "CANVAS_NOT_SHOWING"
-  /// Canvas cannot open: no worktree has a terminal to show.
+  /// Canvas cannot open: there is no open worktree or folder to show.
   public static let canvasUnavailable = "CANVAS_UNAVAILABLE"
 
   // Skills

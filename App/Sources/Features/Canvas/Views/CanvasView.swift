@@ -19,6 +19,8 @@ struct CanvasView: View {
   var onFocusedWorktreeChanged: (Worktree.ID?) -> Void = { _ in }
   var onFocusRequestConsumed: (Int) -> Void = { _ in }
   var onCommandConsumed: (Int) -> Void = { _ in }
+  /// Canvas is closing with a request it never ran; it must not run later.
+  var onCommandDropped: (Int) -> Void = { _ in }
   /// Reports whether a card is currently expanded in place, so the parent can
   /// give the window toolbar a matching scrim (it can't be covered from here).
   var onExpandedChange: (Bool) -> Void = { _ in }

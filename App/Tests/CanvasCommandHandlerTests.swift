@@ -1,3 +1,4 @@
+import Clocks
 import Foundation
 import ProwlCLIShared
 import Testing
@@ -11,6 +12,8 @@ private final class FakeCanvasApp {
   var snapshot = CanvasCLISnapshot(isShowing: false, layoutMode: nil, cardCount: 3, pendingCommandRequestID: nil)
   var canShow = true
   var viewTakesCommands = true
+  /// Canvas closes (or another request replaces this one) before running it.
+  var dropsCommands = false
   var operations: [CanvasCLIOperation] = []
   private var nextRequestID = 0
 
@@ -28,6 +31,9 @@ private final class FakeCanvasApp {
       snapshot.pendingCommandRequestID = nextRequestID
       if viewTakesCommands {
         if case .layout(let kind) = command { snapshot.layoutMode = .automatic(kind) }
+        snapshot.pendingCommandRequestID = nil
+        snapshot.lastPerformedCommandRequestID = nextRequestID
+      } else if dropsCommands {
         snapshot.pendingCommandRequestID = nil
       }
       return nextRequestID
@@ -144,6 +150,50 @@ struct CanvasCommandHandlerTests {
     let response = await run(CanvasInput(action: .fit), on: app)
 
     #expect(response.error?.code == CLIErrorCode.canvasFailed)
+  }
+
+  @Test func aDroppedOrReplacedCommandFails() async {
+    let app = FakeCanvasApp()
+    app.snapshot.isShowing = true
+    app.viewTakesCommands = false
+    app.dropsCommands = true
+
+    let response = await run(CanvasInput(action: .layout, layout: .tile), on: app)
+
+    #expect(response.error?.code == CLIErrorCode.canvasFailed)
+  }
+
+  @Test func pollingReturnsWhenTheConditionHolds() async {
+    let clock = TestClock()
+    var polls = 0
+    let task = Task { @MainActor in
+      await ProwlApp.pollUntil(
+        {
+          polls += 1
+          return polls >= 3
+        }, clock: clock)
+    }
+    await clock.advance(by: .milliseconds(50))
+    await clock.advance(by: .milliseconds(50))
+    #expect(await task.value)
+  }
+
+  @Test func pollingGivesUpAtTheTimeout() async {
+    let clock = TestClock()
+    let task = Task { @MainActor in
+      await ProwlApp.pollUntil({ false }, timeout: .milliseconds(100), clock: clock)
+    }
+    await clock.advance(by: .milliseconds(200))
+    #expect(await task.value == false)
+  }
+
+  @Test func pollingStopsAtOnceWhenCancelled() async {
+    let clock = TestClock()
+    let task = Task { @MainActor in
+      await ProwlApp.pollUntil({ false }, clock: clock)
+    }
+    task.cancel()
+    #expect(await task.value == false)
   }
 
   @Test func layoutNamesMapToLayoutKinds() {

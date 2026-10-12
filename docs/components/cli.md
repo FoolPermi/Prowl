@@ -979,7 +979,7 @@ Follow the returned self-initiated delivery instruction to submit the briefing.
 | `WORKFLOW_DELIVERY_REQUIRED` | `agents dispatch-complete` ran in a pane whose pending dispatch is a workflow activation; the message carries the exact `prowl workflow deliver` command to run instead. |
 | `REQUEST_CANCELLED` | The CLI disconnected before an in-app workflow request completed; the run itself was not affected. |
 | `CANVAS_NOT_SHOWING` | `canvas layout` or `canvas fit` while Canvas is hidden; add `--show`. |
-| `CANVAS_UNAVAILABLE` | Canvas cannot open because no worktree has a terminal; open or create one first. |
+| `CANVAS_UNAVAILABLE` | Canvas cannot open because no worktree or folder is open; open one first. |
 | `NO_ACTIVE_PANE` | No pane for focused-target; pass an explicit `--pane`. |
 | `EMPTY_INPUT` | `send` got neither argv nor stdin (or both). |
 | `INVALID_ARGUMENT` | Bad flag/combo (e.g. `--capture --no-wait`) or out-of-range value. |

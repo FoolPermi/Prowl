@@ -30,8 +30,11 @@ The commands accept no target: Canvas shows every open tab of every worktree.
   `--show`, they switch to Canvas first; without it they fail with `CANVAS_NOT_SHOWING`.
 - `status` changes nothing.
 
-`show`, `layout`, and `fit` return after Canvas has taken the change (up to a few seconds),
-so a following `status` reports the new state.
+`show`, `layout`, and `fit` return after Canvas has applied the change (up to a few
+seconds). After `layout`, the reported `layout` is the new mode. On a first `show`, Canvas
+settles its default layout once it has measured itself, so `layout` may still be absent or
+`freeform` in that response; a later `status` reports the settled mode. A request Canvas
+did not apply (it closed, or another request replaced it) fails and is never applied later.
 
 ## Success
 
@@ -64,9 +67,9 @@ Text mode prints one line, for example `Canvas  showing  layout: tile  6 cards`.
 | Code | Meaning |
 | --- | --- |
 | `CANVAS_NOT_SHOWING` | `layout` or `fit` while Canvas is hidden, without `--show`. |
-| `CANVAS_UNAVAILABLE` | Canvas cannot open: no worktree has a terminal to show. |
-| `CANVAS_FAILED` | Canvas did not take the change in time, or another failure. |
-| `INVALID_ARGUMENT` | `layout` without a layout name (rejected by the CLI parser first). |
+| `CANVAS_UNAVAILABLE` | Canvas cannot open: there is no open worktree or folder to show. |
+| `CANVAS_FAILED` | Canvas did not apply the change in time, closed first, or received another request first. |
+| `INVALID_ARGUMENT` | A socket client sent `layout` without a layout name (the `prowl` parser rejects this before sending). |
 
 Errors use the common error envelope in
 [`cli-output-schema.json`](../../../CLI/Sources/ProwlCLIContracts/Resources/cli-output-schema.json).

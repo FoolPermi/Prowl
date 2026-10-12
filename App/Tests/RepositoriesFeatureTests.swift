@@ -40,6 +40,21 @@ struct RepositoriesFeatureTests {
     // The matching id clears the request.
     await store.send(.consumeCanvasCommandRequest(5)) {
       $0.pendingCanvasCommandRequest = nil
+      $0.lastPerformedCanvasCommandRequestID = 5
+    }
+  }
+
+  @Test func dropCanvasCommandRequestClearsWithoutMarkingItPerformed() async {
+    var initialState = RepositoriesFeature.State()
+    initialState.nextCanvasCommandRequestID = 3
+    initialState.pendingCanvasCommandRequest = CanvasCommandRequest(id: 3, command: .fit)
+    let store = TestStore(initialState: initialState) {
+      RepositoriesFeature()
+    }
+
+    await store.send(.dropCanvasCommandRequest(2))
+    await store.send(.dropCanvasCommandRequest(3)) {
+      $0.pendingCanvasCommandRequest = nil
     }
   }
 

@@ -1172,6 +1172,29 @@ struct ProwlApp: App {
     )
   }
 
+  /// Poll `condition` until it holds or `timeout` passes. Canvas takes a
+  /// request on its next render; a few seconds covers a view switch on a busy
+  /// app. Returns false at once when the task is cancelled (the CLI hung up),
+  /// so a cancelled wait never spins the main actor.
+  @MainActor
+  static func pollUntil<C: Clock<Duration>>(
+    _ condition: @MainActor () -> Bool,
+    timeout: Duration = .seconds(3),
+    interval: Duration = .milliseconds(50),
+    clock: C
+  ) async -> Bool {
+    let deadline = clock.now.advanced(by: timeout)
+    while !condition() {
+      guard clock.now < deadline else { return false }
+      do {
+        try await clock.sleep(for: interval)
+      } catch {
+        return false
+      }
+    }
+    return true
+  }
+
   @MainActor
   static func makeCanvasHandler(
     appStore: StoreOf<AppFeature>,
@@ -1187,7 +1210,8 @@ struct ProwlApp: App {
           isShowing: repositories.isShowingCanvas,
           layoutMode: CanvasLayoutStore.storedMode(),
           cardCount: cardCount,
-          pendingCommandRequestID: repositories.pendingCanvasCommandRequest?.id
+          pendingCommandRequestID: repositories.pendingCanvasCommandRequest?.id,
+          lastPerformedCommandRequestID: repositories.lastPerformedCanvasCommandRequestID
         )
       },
       perform: { operation in
@@ -1201,15 +1225,7 @@ struct ProwlApp: App {
         }
       },
       waitUntil: { condition in
-        // Canvas takes a request on its next render; a few seconds covers a
-        // view switch on a busy app.
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(3))
-        while !condition() {
-          guard clock.now < deadline else { return false }
-          try? await clock.sleep(for: .milliseconds(50))
-        }
-        return true
+        await pollUntil(condition, clock: ContinuousClock())
       }
     )
   }

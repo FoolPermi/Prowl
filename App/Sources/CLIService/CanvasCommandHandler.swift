@@ -11,6 +11,8 @@ struct CanvasCLISnapshot: Equatable {
   var cardCount: Int
   /// The view-local command request Canvas has not consumed yet, if any.
   var pendingCommandRequestID: Int?
+  /// The last view-local request Canvas actually ran.
+  var lastPerformedCommandRequestID: Int?
 }
 
 /// What the handler asks the app to do.
@@ -104,6 +106,14 @@ final class CanvasCommandHandler: CommandHandler {
     }
     guard await waitUntil({ [snapshot] in snapshot().pendingCommandRequestID != requestID }) else {
       return errorResponse(code: CLIErrorCode.canvasFailed, message: "Canvas did not respond.")
+    }
+    // Leaving the slot is not enough: another request may have replaced it, or
+    // Canvas may have closed and dropped it.
+    guard snapshot().lastPerformedCommandRequestID == requestID else {
+      return errorResponse(
+        code: CLIErrorCode.canvasFailed,
+        message: "Canvas closed or received another request before applying this one."
+      )
     }
     return nil
   }
