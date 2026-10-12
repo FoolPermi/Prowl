@@ -2125,7 +2125,7 @@ struct RepositoriesFeatureTests {
       }
     }
 
-    // The new card takes focus through the `.tabCreated` terminal event, not here.
+    // Canvas focuses and reveals the new card itself when it appears.
     await store.send(.newTerminalTab(worktree.id))
     await store.finish()
 

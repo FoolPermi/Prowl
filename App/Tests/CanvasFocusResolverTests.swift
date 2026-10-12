@@ -84,3 +84,41 @@ struct CanvasFocusResolverTests {
     #expect(resolved == nil)
   }
 }
+
+struct CanvasNewCardFocusTests {
+  private let first = CanvasCardRef(worktreeID: "/tmp/repo/a", tabID: TerminalTabID(rawValue: UUID()))
+  private let second = CanvasCardRef(worktreeID: "/tmp/repo/a", tabID: TerminalTabID(rawValue: UUID()))
+  private let other = CanvasCardRef(worktreeID: "/tmp/repo/b", tabID: TerminalTabID(rawValue: UUID()))
+
+  @Test func followsTheLastForegroundNewCard() {
+    let card = CanvasNewCardFocus.cardToFollow(
+      newKeys: [first.key, second.key, other.key],
+      cards: [first, second, other],
+      foregroundTabIDs: [second.tabID, other.tabID]
+    )
+
+    #expect(card == other)
+  }
+
+  @Test func ignoresBackgroundCreations() {
+    // A background tab in a worktree without tabs becomes its selected tab; it
+    // still must not take focus.
+    let card = CanvasNewCardFocus.cardToFollow(
+      newKeys: [first.key],
+      cards: [first],
+      foregroundTabIDs: []
+    )
+
+    #expect(card == nil)
+  }
+
+  @Test func ignoresForegroundTabsThatAreNotNewCards() {
+    let card = CanvasNewCardFocus.cardToFollow(
+      newKeys: [second.key],
+      cards: [first, second],
+      foregroundTabIDs: [first.tabID]
+    )
+
+    #expect(card == nil)
+  }
+}

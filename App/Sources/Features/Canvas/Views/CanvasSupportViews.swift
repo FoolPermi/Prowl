@@ -238,10 +238,14 @@ enum CanvasViewportMath {
   }
 
   /// Viewport that brings `cardFrame` (canvas coordinates) into view with the
-  /// least change from the current one: a pure pan when the card fits at the
-  /// current scale. When it does not fit, `allowsZoomOut` zooms out just
-  /// enough and centers the card; otherwise the pan aligns the card's leading
-  /// edges. Returns nil when no change is needed.
+  /// least change from the current one. Returns nil when the card is already
+  /// fully visible.
+  ///
+  /// When the card fits at the current scale (within `margin` of the edges),
+  /// the viewport only pans. When it does not, `allowsZoomOut` zooms out just
+  /// enough and centers it; otherwise the pan shows its top-left part, title
+  /// bar first. A card too large even at the minimum scale is also aligned to
+  /// its top-left.
   static func reveal(
     cardFrame: CGRect,
     in viewport: Viewport,
@@ -251,35 +255,63 @@ enum CanvasViewportMath {
     let size = viewport.size
     let scale = viewport.scale
     guard size.width > 0, size.height > 0, scale > 0, !cardFrame.isNull else { return nil }
-    let visibleWidth = max(1, size.width - margin * 2)
-    let visibleHeight = max(1, size.height - viewport.bottomReserve - margin * 2)
-    let fits = cardFrame.width * scale <= visibleWidth && cardFrame.height * scale <= visibleHeight
+    let visibleHeight = max(1, size.height - viewport.bottomReserve)
+    let screenFrame = screenRect(of: cardFrame, scale: scale, offset: viewport.offset)
+    if CGRect(x: 0, y: 0, width: size.width, height: visibleHeight).contains(screenFrame) {
+      return nil
+    }
 
+    let usableWidth = max(1, size.width - margin * 2)
+    let usableHeight = max(1, visibleHeight - margin * 2)
+    let fits = screenFrame.width <= usableWidth && screenFrame.height <= usableHeight
     if fits || !allowsZoomOut {
-      let screenFrame = CGRect(
-        x: cardFrame.minX * scale + viewport.offset.width,
-        y: cardFrame.minY * scale + viewport.offset.height,
-        width: cardFrame.width * scale,
-        height: cardFrame.height * scale
-      )
-      let delta = revealDelta(for: screenFrame, viewport: size, bottomReserve: viewport.bottomReserve, margin: margin)
-      guard delta != .zero else { return nil }
-      return FitResult(
-        scale: scale,
-        offset: CGSize(width: viewport.offset.width + delta.width, height: viewport.offset.height + delta.height)
-      )
+      return pan(cardFrame, in: viewport, usable: CGSize(width: usableWidth, height: usableHeight), margin: margin)
     }
 
     let fittedScale = max(
       CanvasZoomMath.minScale,
-      min(scale, visibleWidth / cardFrame.width, visibleHeight / cardFrame.height)
+      min(scale, usableWidth / cardFrame.width, usableHeight / cardFrame.height)
     )
+    let centered = CGSize(
+      width: size.width / 2 - cardFrame.midX * fittedScale,
+      height: visibleHeight / 2 - cardFrame.midY * fittedScale
+    )
+    // Still too large at the minimum scale: keep the title bar on screen.
     return FitResult(
       scale: fittedScale,
       offset: CGSize(
-        width: size.width / 2 - cardFrame.midX * fittedScale,
-        height: (size.height - viewport.bottomReserve) / 2 - cardFrame.midY * fittedScale
+        width: cardFrame.width * fittedScale > usableWidth ? margin - cardFrame.minX * fittedScale : centered.width,
+        height: cardFrame.height * fittedScale > usableHeight ? margin - cardFrame.minY * fittedScale : centered.height
       )
+    )
+  }
+
+  /// Pan at `scale` so the card's frame is within `margin` of the visible
+  /// area; on an axis where it is larger than the usable area, align its
+  /// leading edge instead.
+  private static func pan(
+    _ cardFrame: CGRect,
+    in viewport: Viewport,
+    usable: CGSize,
+    margin: CGFloat
+  ) -> FitResult? {
+    let (scale, offset) = (viewport.scale, viewport.offset)
+    let screenFrame = screenRect(of: cardFrame, scale: scale, offset: offset)
+    var delta = revealDelta(
+      for: screenFrame, viewport: viewport.size, bottomReserve: viewport.bottomReserve, margin: margin)
+    if screenFrame.width > usable.width { delta.width = margin - screenFrame.minX }
+    if screenFrame.height > usable.height { delta.height = margin - screenFrame.minY }
+    guard delta != .zero else { return nil }
+    return FitResult(
+      scale: scale, offset: CGSize(width: offset.width + delta.width, height: offset.height + delta.height))
+  }
+
+  private static func screenRect(of frame: CGRect, scale: CGFloat, offset: CGSize) -> CGRect {
+    CGRect(
+      x: frame.minX * scale + offset.width,
+      y: frame.minY * scale + offset.height,
+      width: frame.width * scale,
+      height: frame.height * scale
     )
   }
 

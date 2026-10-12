@@ -240,6 +240,10 @@ extension CanvasView {
     cleanStaleLayouts()
 
     let activeStates = terminalManager.activeWorktreeStates
+    // Tabs created before Canvas showed are not new cards to follow.
+    for state in activeStates {
+      state.lastForegroundCreatedTabID = nil
+    }
 
     // Mark all states as canvas-managed so that tree updates (e.g. split
     // creation) don't trigger applySurfaceActivity with stale normal-mode

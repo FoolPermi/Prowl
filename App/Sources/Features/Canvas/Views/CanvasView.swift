@@ -107,6 +107,9 @@ struct CanvasView: View {
             if !allCardKeys.isEmpty {
               hasSeenCanvasCards = true
             }
+            // Drop layouts of tabs closed since the last visit first, so new
+            // cards are not placed around them.
+            cleanStaleLayouts()
             placeUnpositionedCards(allCardKeys)
             if !allCardKeys.isEmpty {
               layoutStore.ensureZOrder(for: allCardKeys)
@@ -466,8 +469,7 @@ struct CanvasView: View {
   /// the cards form a balanced grid; after that, each new card goes to a free
   /// spot next to the focused card without moving any other card.
   ///
-  /// Returns the keys placed next to existing cards, in placement order (empty
-  /// for the fresh-canvas grid).
+  /// Returns the keys that were placed, in canvas order.
   @discardableResult
   func placeUnpositionedCards(_ cardKeys: [String]) -> [String] {
     let unpositioned = cardKeys.filter { layoutStore.cardLayouts[$0] == nil }
@@ -478,7 +480,7 @@ struct CanvasView: View {
       let grid = CanvasGridLayout(spacing: layoutMetrics.cardSpacing, titleBarHeight: titleBarHeight)
       layoutStore.setCardLayouts(
         layoutStore.cardLayouts.merging(grid.layout(keys: unpositioned, cardSize: cardSize)) { _, new in new })
-      return []
+      return unpositioned
     }
 
     // Every stored card is an obstacle, including ones not on the canvas right
@@ -494,22 +496,33 @@ struct CanvasView: View {
     return unpositioned
   }
 
-  /// A tab created selected — ⌘T, the palette, the sidebar, the CLI without
-  /// `--background` — takes canvas focus as soon as its card is placed and is
-  /// revealed, so the user always sees what they created. Focusing it in the
-  /// same pass that placed it also makes it the anchor for the next new card,
-  /// however quickly that one follows. Background creations are not selected
-  /// in their worktree and leave focus alone.
+  /// A tab created in the foreground — ⌘T, the palette, the sidebar, the CLI
+  /// without `--background` — takes canvas focus as soon as its card is placed
+  /// and is revealed, so the user always sees what they created. Focusing it in
+  /// the same pass that placed it also makes it the anchor for the next new
+  /// card, however quickly that one follows. Background creations leave focus
+  /// and the view alone.
   func followNewCard(among placedKeys: [String], states: [WorktreeTerminalState]) {
     guard !placedKeys.isEmpty else { return }
-    let placed = Set(placedKeys)
-    let newSelectedCard = canvasCards(in: states).last { card in
-      placed.contains(card.key)
-        && states.first { $0.worktreeID == card.worktreeID }?.tabManager.selectedTabId == card.tabID
+    let newKeys = Set(placedKeys)
+    let foregroundTabIDs = Set(states.compactMap(\.lastForegroundCreatedTabID))
+    let card = CanvasNewCardFocus.cardToFollow(
+      newKeys: newKeys,
+      cards: canvasCards(in: states),
+      foregroundTabIDs: foregroundTabIDs
+    )
+    // Claim the foreground marks of the cards placed now.
+    for state in states {
+      if let tabID = state.lastForegroundCreatedTabID, newKeys.contains(tabID.canvasCardKey) {
+        state.lastForegroundCreatedTabID = nil
+      }
     }
-    guard let newSelectedCard else { return }
-    focusSingleCard(newSelectedCard.tabID, states: states)
-    revealCard(newSelectedCard.tabID, allowsZoomOut: true)
+    guard let card else { return }
+    // ⌘T inside an expanded card: show the new card instead of hiding it behind
+    // the expansion.
+    collapseExpand()
+    focusSingleCard(card.tabID, states: states)
+    revealCard(card.tabID, allowsZoomOut: true)
   }
 
   /// Compute effective center and size accounting for resize only (not drag).

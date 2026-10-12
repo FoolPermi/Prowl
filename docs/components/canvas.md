@@ -117,9 +117,10 @@ and splits are not acknowledged merely because they are selected or receive broa
   nearest free spot — without moving any other card. Creating several tabs in a
   row lines them up next to each other, however fast you press `⌘T`.
 - **The new card takes focus and comes into view.** The canvas pans just enough to
-  show it, zooming out only if the card is larger than the window. Tabs created
-  with `prowl create tab --background` are placed the same way but leave focus
-  and the view alone.
+  show it, zooming out only if the card does not fit in the visible canvas. An
+  expanded card is restored first. Tabs created with
+  `prowl create tab --background` are placed the same way but leave focus and
+  the view alone.
 - Closing a card's last tab prunes it; focus advances to a neighbor.
 
 ## Many agents at once

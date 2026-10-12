@@ -1549,11 +1549,19 @@ struct ProwlApp: App {
     }
 
     if !request.background {
-      selectCLIWorktreeContextForNewTab(
-        worktreeID: request.target.worktreeID,
-        appStore: appStore,
-        terminalManager: terminalManager
-      )
+      if case .tab = preparation.context.request.placement {
+        selectCLIWorktreeContextForNewTab(
+          worktreeID: request.target.worktreeID,
+          appStore: appStore,
+          terminalManager: terminalManager
+        )
+      } else {
+        selectCLIWorktreeContext(
+          worktreeID: request.target.worktreeID,
+          appStore: appStore,
+          terminalManager: terminalManager
+        )
+      }
       terminalManager.state(for: worktree).selectTab(launched.tabID)
     }
     let resolver = makeTargetResolver(appStore: appStore, terminalManager: terminalManager)

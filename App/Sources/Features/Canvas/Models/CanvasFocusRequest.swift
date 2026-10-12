@@ -76,3 +76,17 @@ enum CanvasFocusResolver {
     }
   }
 }
+
+/// Which newly placed card Canvas follows.
+enum CanvasNewCardFocus {
+  /// The last new card, in canvas order, whose tab was created in the
+  /// foreground. Background creations, restores, and existing cards that only
+  /// just appeared on the canvas are never followed.
+  static func cardToFollow(
+    newKeys: Set<String>,
+    cards: [CanvasCardRef],
+    foregroundTabIDs: Set<TerminalTabID>
+  ) -> CanvasCardRef? {
+    cards.last { newKeys.contains($0.key) && foregroundTabIDs.contains($0.tabID) }
+  }
+}
