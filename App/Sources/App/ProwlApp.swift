@@ -1167,7 +1167,50 @@ struct ProwlApp: App {
       closeHandler: lifecycleHandler,
       tabHandler: tabHandler,
       paneHandler: paneHandler,
-      workflowHandler: workflowHandler
+      workflowHandler: workflowHandler,
+      canvasHandler: makeCanvasHandler(appStore: appStore, terminalManager: terminalManager)
+    )
+  }
+
+  @MainActor
+  static func makeCanvasHandler(
+    appStore: StoreOf<AppFeature>,
+    terminalManager: WorktreeTerminalManager
+  ) -> CanvasCommandHandler {
+    CanvasCommandHandler(
+      snapshot: {
+        let repositories = appStore.state.repositories
+        let cardCount = terminalManager.activeWorktreeStates.reduce(0) { count, state in
+          count + state.tabManager.tabs.count { state.hasCanvasCard($0.id) }
+        }
+        return CanvasCLISnapshot(
+          isShowing: repositories.isShowingCanvas,
+          layoutMode: CanvasLayoutStore.storedMode(),
+          cardCount: cardCount,
+          pendingCommandRequestID: repositories.pendingCanvasCommandRequest?.id
+        )
+      },
+      perform: { operation in
+        switch operation {
+        case .show, .hide:
+          appStore.send(.repositories(.toggleCanvas))
+          return nil
+        case .command(let command):
+          appStore.send(.repositories(.requestCanvasCommand(command)))
+          return appStore.state.repositories.pendingCanvasCommandRequest?.id
+        }
+      },
+      waitUntil: { condition in
+        // Canvas takes a request on its next render; a few seconds covers a
+        // view switch on a busy app.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while !condition() {
+          guard clock.now < deadline else { return false }
+          try? await clock.sleep(for: .milliseconds(50))
+        }
+        return true
+      }
     )
   }
 

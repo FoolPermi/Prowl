@@ -44,6 +44,7 @@ struct CanvasCommandRequest: Equatable, Sendable {
   enum Command: Equatable, Sendable {
     case toggleExpand
     case layout(CanvasLayoutKind)
+    case fit
     case selectAll
     case navigate(CanvasNavigationDirection)
   }

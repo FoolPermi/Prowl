@@ -115,6 +115,13 @@ final class CanvasLayoutStore {
     return mode?.automaticKind
   }
 
+  /// The mode saved by the last Canvas, without loading a store — for status
+  /// reports while Canvas is hidden.
+  static func storedMode(defaults: UserDefaults = .standard) -> CanvasLayoutMode? {
+    let stored = load(from: defaults)
+    return stored.mode ?? (stored.cardLayouts.isEmpty ? nil : .freeform)
+  }
+
   func setCardLayouts(_ layouts: [String: CanvasCardLayout], zOrder newZOrder: [String]? = nil) {
     cardLayouts = layouts
     zOrder = normalizedZOrder(newZOrder ?? zOrder, visibleKeys: Array(layouts.keys))

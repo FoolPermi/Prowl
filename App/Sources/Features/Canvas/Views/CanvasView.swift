@@ -126,6 +126,9 @@ struct CanvasView: View {
             pruneSelection(previousOrder: [], currentOrder: allTabIDs, states: activeStates)
             syncBroadcastCallbacks(states: activeStates)
             fulfillPendingFocusRequest(focusRequest, states: activeStates)
+            // A request sent just before Canvas showed (e.g. `prowl canvas
+            // layout --show`) produces no change event for this new view.
+            fulfillCommandRequest(commandRequest)
           }
           .onChange(of: allCardKeys) { oldKeys, newKeys in
             if newKeys.isEmpty {

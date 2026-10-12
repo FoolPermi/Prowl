@@ -94,6 +94,10 @@ button is highlighted, every card stays where you put it, and a new card goes
 to a free spot next to the focused card. Press any layout button to go back to
 an automatic layout. The mode is saved with the card positions.
 
+Automation can do the same from the command line: `prowl canvas layout tile --show`
+switches to Canvas and tiles every card, and `prowl canvas status --json` reports the
+current layout (see [cli](cli.md#prowl-canvas)).
+
 ## Toolbar actions
 
 The main toolbar tracks the focused card. Its center status area shows the same

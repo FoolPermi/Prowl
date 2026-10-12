@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | In progress |
+| **Status** | Implemented |
 | **Anchor date** | 2026-10-12 |
 | **Primary PRs** | S0 (TBD), S1 (TBD), S2 (TBD), S3 (TBD) |
 | **Related** | [005-canvas-live-sessions](../005-canvas-live-sessions/000-plan.md), [024-canvas-interaction-evolution](../024-canvas-interaction-evolution/000-plan.md), [043-canvas-tile-layout](../043-canvas-tile-layout/000-plan.md), [060-prowl-cli-targeting-and-contract-governance](../060-prowl-cli-targeting-and-contract-governance/000-plan.md), [#760](https://github.com/onevcat/Prowl/issues/760), `docs/components/canvas.md`, `docs/components/cli.md` |
@@ -143,3 +143,4 @@ Once a layout ran, Canvas forgot it. Three problems followed:
 - Updated 2026-10-12: S0 consolidation shipped — see [002-s0-consolidation.md](002-s0-consolidation.md)
 - Updated 2026-10-12: S1 placement and following new cards — see [003-s1-placement.md](003-s1-placement.md)
 - Updated 2026-10-12: S2 remembered layout modes — see [004-s2-layout-modes.md](004-s2-layout-modes.md)
+- Updated 2026-10-12: S3 `prowl canvas` CLI — see [005-s3-cli.md](005-s3-cli.md); action log in [001-action.md](001-action.md)

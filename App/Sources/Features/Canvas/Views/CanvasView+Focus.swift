@@ -11,6 +11,8 @@ extension CanvasView {
       toggleExpandFocusedCard()
     case .layout(let kind):
       applyLayout(kind)
+    case .fit:
+      animateFitToView()
     case .selectAll:
       selectAllCards()
     case .navigate(let direction):
