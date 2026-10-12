@@ -18,6 +18,9 @@ struct CanvasScrollContainer<Content: View>: NSViewRepresentable {
   @Binding var scale: CGFloat
   @Binding var lastScale: CGFloat
   var isInteractionEnabled: Bool
+  /// Cancelled when the user scrolls, zooms, or middle-drags the canvas, so a
+  /// running viewport animation yields to the gesture.
+  var viewportAnimator: CanvasViewportAnimator?
   @ViewBuilder var content: Content
 
   func makeCoordinator() -> CanvasScrollCoordinator {
@@ -44,6 +47,7 @@ struct CanvasScrollContainer<Content: View>: NSViewRepresentable {
     context.coordinator.lastOffset = $lastOffset
     context.coordinator.scale = $scale
     context.coordinator.lastScale = $lastScale
+    context.coordinator.onUserViewportChange = { [viewportAnimator] in viewportAnimator?.cancel() }
     nsView.isInteractionEnabled = isInteractionEnabled
     if let hosting = nsView.subviews.first as? NSHostingView<Content> {
       hosting.rootView = content
@@ -56,8 +60,10 @@ class CanvasScrollCoordinator {
   var lastOffset: Binding<CGSize> = .constant(.zero)
   var scale: Binding<CGFloat> = .constant(1.0)
   var lastScale: Binding<CGFloat> = .constant(1.0)
+  var onUserViewportChange: () -> Void = {}
 
   func handleScroll(deltaX: CGFloat, deltaY: CGFloat) {
+    onUserViewportChange()
     let current = offset.wrappedValue
     let newOffset = CGSize(
       width: current.width + deltaX,
@@ -68,6 +74,7 @@ class CanvasScrollCoordinator {
   }
 
   func handleZoom(deltaY: CGFloat, anchor: CGPoint, isPrecise: Bool) {
+    onUserViewportChange()
     let result = CanvasZoomMath.zoom(
       currentScale: scale.wrappedValue,
       currentOffset: offset.wrappedValue,
@@ -82,6 +89,7 @@ class CanvasScrollCoordinator {
   }
 
   func setOffset(_ newOffset: CGSize) {
+    onUserViewportChange()
     offset.wrappedValue = newOffset
     lastOffset.wrappedValue = newOffset
   }

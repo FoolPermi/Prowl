@@ -75,6 +75,20 @@ A review of the first cut found, and this slice fixes:
 - A relayout waits while a card is being resized; a resize that changes
   nothing no longer enters freeform; the mode is saved only when it changes.
 
+### Second review round (whole stack)
+
+- A resize released with no change kept the deferred relayout pending until some
+  other event; `commitResize` now runs `relayoutIfDeferred()`.
+- Undo-close could return a card onto cards that moved into its old spot
+  (automatic relayout, then a drag into freeform). Cards that reappear with a
+  frame covered by a card that stayed are placed again (`dropCoveredLayouts`).
+- User scroll, pan, middle-drag, and pinch now cancel a running viewport
+  animation (`CanvasScrollContainer.onUserViewportChange`, gesture handlers).
+- In a zoomed-in automatic board, a relayout no longer reveals the old focused card
+  before following the new one; it reveals only the card that ends up focused.
+- On entry, freeform placement anchors to the selected tab of the selected worktree
+  (the card entry is about to focus) instead of the reading-order fallback.
+
 ## Decisions
 
 - **Re-applying Tile and Organize resizes every terminal.** Accepted: filling

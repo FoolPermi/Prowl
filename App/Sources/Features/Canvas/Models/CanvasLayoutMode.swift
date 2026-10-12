@@ -3,9 +3,9 @@ import Foundation
 /// How Canvas keeps its cards laid out, remembered across launches.
 ///
 /// - `automatic(kind)`: the card set and the viewport determine the layout.
-///   Adding or closing a card, or resizing the window, re-applies `kind` and
-///   fits the viewport. Choosing a layout (toolbar, shortcut, palette, CLI)
-///   enters this mode.
+///   Adding or closing a card, or resizing the window, re-applies `kind`; the
+///   viewport refits if it showed the whole board. Choosing a layout (toolbar,
+///   shortcut, palette, CLI) enters this mode and refits.
 /// - `freeform`: the user arranged cards by hand. Cards stay where they are;
 ///   a new card goes to a free spot next to the focused card. Dragging or
 ///   resizing a card enters this mode.

@@ -140,8 +140,10 @@ and splits are not acknowledged merely because they are selected or receive broa
 - **The new card takes focus and comes into view.** The canvas pans just enough to
   show it, zooming out only if the card does not fit in the visible canvas. An
   expanded card is restored first. Tabs created with
-  `prowl create tab --background` are placed the same way but leave focus and
-  the view alone.
+  `prowl create tab --background` never take focus; in freeform they also leave
+  the view alone, while an automatic layout still re-lays the board out.
+- **A card brought back with undo** returns to its old spot unless another card
+  now sits there; then it gets a free spot like a new card.
 - Closing a card's last tab prunes it; focus advances to a neighbor.
 
 ## Many agents at once

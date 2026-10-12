@@ -37,7 +37,7 @@ struct CanvasView: View {
   /// Viewport size the current automatic layout was computed for.
   @State var automaticLayoutViewportSize: CGSize = .zero
   /// A card-set change arrived while a relayout could not run (a card was
-  /// expanded); apply the automatic layout once it is restored.
+  /// expanded or being resized); apply the automatic layout afterwards.
   @State var needsAutomaticRelayout = false
   /// The viewport of the last fit-to-view; a relayout refits only while the
   /// viewport still shows it.
@@ -101,7 +101,8 @@ struct CanvasView: View {
       lastOffset: $lastCanvasOffset,
       scale: $canvasScale,
       lastScale: $lastCanvasScale,
-      isInteractionEnabled: expandedTabID == nil
+      isInteractionEnabled: expandedTabID == nil,
+      viewportAnimator: viewportAnimator
     ) {
       GeometryReader { _ in
         let activeStates = terminalManager.activeWorktreeStates
@@ -126,7 +127,7 @@ struct CanvasView: View {
             syncBroadcastCallbacks(states: activeStates)
             fulfillPendingFocusRequest(focusRequest, states: activeStates)
           }
-          .onChange(of: allCardKeys) { _, newKeys in
+          .onChange(of: allCardKeys) { oldKeys, newKeys in
             if newKeys.isEmpty {
               if hasSeenCanvasCards {
                 layoutStore.prune(to: [])
@@ -134,7 +135,7 @@ struct CanvasView: View {
             } else {
               hasSeenCanvasCards = true
             }
-            handleCardSetChange(to: newKeys)
+            handleCardSetChange(to: newKeys, appeared: Set(newKeys).subtracting(oldKeys))
             if !newKeys.isEmpty {
               layoutStore.ensureZOrder(for: newKeys)
             }
@@ -425,6 +426,7 @@ struct CanvasView: View {
   var canvasPanGesture: some Gesture {
     DragGesture()
       .onChanged { value in
+        viewportAnimator.cancel()
         canvasOffset = CGSize(
           width: lastCanvasOffset.width + value.translation.width,
           height: lastCanvasOffset.height + value.translation.height
@@ -438,6 +440,7 @@ struct CanvasView: View {
   var canvasZoomGesture: some Gesture {
     MagnifyGesture()
       .onChanged { value in
+        viewportAnimator.cancel()
         let newScale = max(0.25, min(2.0, lastCanvasScale * value.magnification))
         let anchor = value.startLocation
 
@@ -607,6 +610,9 @@ struct CanvasView: View {
       }
     }
     activeResize[tabID] = nil
+    // A card-set change that waited for this resize; a resize that changed
+    // nothing keeps the automatic layout, so it must still run.
+    relayoutIfDeferred()
     for surface in surfaces {
       surface.needsLayout = true
       surface.needsDisplay = true

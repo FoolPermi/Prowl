@@ -95,7 +95,7 @@ Once a layout ran, Canvas forgot it. Three problems followed:
   (the focused card): right, then below, then the nearest free corner slot.
   A batch of new cards is placed one at a time with the previous new card as
   the next anchor, so the result does not depend on how creations were batched.
-- A card created as the selected tab of its worktree — every foreground
+- A card created in the foreground (marked on the terminal state) — every foreground
   creation path (⌘T, palette, sidebar, CLI without `--background`) — takes
   Canvas focus in the same pass that places it, and is revealed with the
   smallest pan, zooming out only when it does not fit. Background creations
@@ -120,8 +120,8 @@ Once a layout ran, Canvas forgot it. Three problems followed:
 - `prowl canvas show|hide`, `prowl canvas layout <arrange|organize|tile>`,
   `prowl canvas fit`, and `prowl canvas status` following the 060 contract
   governance (contracts, docs, bundled skill).
-- Layout requests that arrive before Canvas has measured its viewport are held
-  until it has.
+- A layout chosen before Canvas has measured its viewport sets the mode; the
+  entry layout applies it once the viewport is known.
 
 ## Alternatives & decisions
 

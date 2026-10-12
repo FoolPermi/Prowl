@@ -36,10 +36,17 @@ extension CanvasView {
   }
 
   /// React to cards appearing or closing. In an automatic layout every card is
-  /// laid out again and the viewport refits; in freeform new cards get free
-  /// spots and nothing else moves. Either way a new foreground card takes focus.
-  func handleCardSetChange(to cardKeys: [String]) {
+  /// laid out again (refitting if the view showed the whole board); in
+  /// freeform new cards get free spots and nothing else moves. Either way a new
+  /// foreground card takes focus.
+  ///
+  /// `appeared` are the cards new to the canvas since the last change: newly
+  /// created ones, and ones coming back (undo-close) with a stored frame.
+  func handleCardSetChange(to cardKeys: [String], appeared: Set<String> = []) {
     guard !cardKeys.isEmpty else { return }
+    // A returning card's old frame may now be covered by cards that moved in
+    // since it closed; place it again instead of on top of them.
+    dropCoveredLayouts(of: appeared, among: cardKeys)
     guard hasPerformedInitialFit else {
       // The first cards of an empty Canvas, or cards that arrived before the
       // viewport was measured.
@@ -54,8 +61,12 @@ extension CanvasView {
     switch action {
     case .relayout(let kind):
       let newKeys = cardKeys.filter { layoutStore.cardLayouts[$0] == nil }
-      relayoutAutomatically(kind)
-      followNewCard(among: newKeys, states: terminalManager.activeWorktreeStates)
+      let refitted = relayoutAutomatically(kind, revealsFocusedCard: false)
+      let followed = followNewCard(among: newKeys, states: terminalManager.activeWorktreeStates)
+      // A zoomed-in view keeps showing the focused card as the others move.
+      if !refitted, !followed, let focused = selectionState.primaryTabID {
+        revealCard(focused, allowsZoomOut: true)
+      }
     case .placeNewCards:
       followNewCard(among: placeUnpositionedCards(cardKeys), states: terminalManager.activeWorktreeStates)
     case .placeNewCardsAndRelayoutLater:
@@ -129,9 +140,15 @@ extension CanvasView {
   /// `cardView`). The viewport refits when it showed the whole board before
   /// (or `refitting` asks for it); a viewport the user zoomed or panned keeps
   /// its zoom and follows the focused card instead.
-  func relayoutAutomatically(_ kind: CanvasLayoutKind, refitting: Bool = false) {
+  /// Returns whether the viewport refits.
+  @discardableResult
+  func relayoutAutomatically(
+    _ kind: CanvasLayoutKind,
+    refitting: Bool = false,
+    revealsFocusedCard: Bool = true
+  ) -> Bool {
     needsAutomaticRelayout = false
-    guard let result = computeLayouts(kind) else { return }
+    guard let result = computeLayouts(kind) else { return false }
     let refits = refitting || isViewportFitted
     withAnimation(expandAnimation) {
       layoutStore.applyLayouts(result.layouts, order: result.keys)
@@ -139,9 +156,10 @@ extension CanvasView {
     automaticLayoutViewportSize = viewportSize
     if refits {
       animateFitToView()
-    } else if let focused = selectionState.primaryTabID {
+    } else if revealsFocusedCard, let focused = selectionState.primaryTabID {
       revealCard(focused, allowsZoomOut: true)
     }
+    return refits
   }
 
   /// Lay out every card with `kind`, without animation or touching the
@@ -198,11 +216,41 @@ extension CanvasView {
     let placed = placement.place(
       unpositioned.map { CanvasCardPlacement.NewCard(key: $0, size: cardSize) },
       existing: layoutStore.cardLayouts,
-      anchorKey: selectionState.primaryTabID?.canvasCardKey
+      anchorKey: placementAnchorKey
     )
     // Assign once to trigger a single save.
     layoutStore.setCardLayouts(layoutStore.cardLayouts.merging(placed) { _, new in new })
     return unpositioned
+  }
+
+  /// The card new cards go next to: the focused card, or — before Canvas has
+  /// focused one on entry — the selected tab of the selected worktree, which
+  /// entry is about to focus.
+  var placementAnchorKey: String? {
+    if let primary = selectionState.primaryTabID { return primary.canvasCardKey }
+    guard let worktreeID = terminalManager.selectedWorktreeID,
+      let state = terminalManager.activeWorktreeStates.first(where: { $0.worktreeID == worktreeID })
+    else { return nil }
+    return state.tabManager.selectedTabId?.canvasCardKey
+  }
+
+  /// Forget the stored frames of `appeared` cards that overlap a card that
+  /// stayed on the canvas, so they are placed again.
+  func dropCoveredLayouts(of appeared: Set<String>, among cardKeys: [String]) {
+    guard !appeared.isEmpty else { return }
+    let stayed = cardKeys.filter { !appeared.contains($0) }.compactMap {
+      layoutStore.cardLayouts[$0]?.frame(titleBarHeight: titleBarHeight)
+    }
+    var layouts = layoutStore.cardLayouts
+    for key in appeared {
+      guard let frame = layouts[key]?.frame(titleBarHeight: titleBarHeight) else { continue }
+      if stayed.contains(where: { $0.intersection(frame).width > 1 && $0.intersection(frame).height > 1 }) {
+        layouts[key] = nil
+      }
+    }
+    if layouts.count != layoutStore.cardLayouts.count {
+      layoutStore.setCardLayouts(layouts)
+    }
   }
 
   /// A tab created in the foreground — ⌘T, the palette, the sidebar, the CLI
@@ -211,8 +259,10 @@ extension CanvasView {
   /// the same pass that placed it also makes it the anchor for the next new
   /// card, however quickly that one follows. Background creations leave focus
   /// and the view alone.
-  func followNewCard(among placedKeys: [String], states: [WorktreeTerminalState]) {
-    guard !placedKeys.isEmpty else { return }
+  /// Returns whether a card was followed.
+  @discardableResult
+  func followNewCard(among placedKeys: [String], states: [WorktreeTerminalState]) -> Bool {
+    guard !placedKeys.isEmpty else { return false }
     let newKeys = Set(placedKeys)
     let foregroundTabIDs = Set(states.compactMap(\.lastForegroundCreatedTabID))
     let card = CanvasNewCardFocus.cardToFollow(
@@ -226,12 +276,13 @@ extension CanvasView {
         state.lastForegroundCreatedTabID = nil
       }
     }
-    guard let card else { return }
+    guard let card else { return false }
     // ⌘T inside an expanded card: show the new card instead of hiding it behind
     // the expansion.
     collapseExpand()
     focusSingleCard(card.tabID, states: states)
     revealCard(card.tabID, allowsZoomOut: true)
+    return true
   }
 
   // MARK: - Viewport
@@ -284,7 +335,7 @@ extension CanvasView {
   /// Animate the viewport to `target` with `viewportAnimator`, which drives
   /// the transform frame by frame (a SwiftUI animation would not reach the
   /// scroll container's bindings). A pan-only animation never writes the
-  /// scale, so it cannot fight a zoom gesture that is in progress.
+  /// scale, and any user scroll, pan, or zoom cancels the animation.
   func animateViewport(to target: CanvasViewportAnimator.Snapshot) {
     let start = CanvasViewportAnimator.Snapshot(offset: canvasOffset, scale: canvasScale)
     let animatesScale = start.scale != target.scale
