@@ -49,6 +49,32 @@ S2 makes the chosen layout a mode that Canvas keeps applying.
 - `canvasDefaultLayout` keeps its stored values; it now names the layout a fresh
   canvas starts in.
 
+## Review fixes
+
+A review of the first cut found, and this slice fixes:
+
+- ⌘T in an expanded card lost the deferred relayout (following the new card
+  restored the expansion before the flag was set) and left the flag set; the
+  flag is now set first and consumed by every relayout.
+- A remembered automatic mode was replaced by the default whenever every card
+  was new — on every launch without terminal layout restore. Only a freeform
+  canvas of unknown cards falls back to the default now.
+- The viewport-change relayout used the mode read before its 300 ms wait; it
+  now re-reads the mode and size after the wait.
+- Writing new cards' frames in a separate non-animated transaction cannot work
+  (one body update, one transaction). New cards now opt out with
+  `.animation(nil, value: hasLayout)` on the card.
+- `fitToView` inside `withAnimation` does not animate the scroll container's
+  transform; relayouts use `animateFitToView()` (the viewport animator), and
+  `revealCard` computes from the animator's target so a reveal does not cancel
+  a refit that already shows the card (seen in the Debug app: the new card was
+  revealed at the old zoom instead of the board refitting).
+- A relayout refits only if the viewport showed the fitted board
+  (`fittedViewport`); otherwise it keeps the user's zoom and reveals the
+  focused card. Choosing a layout always refits.
+- A relayout waits while a card is being resized; a resize that changes
+  nothing no longer enters freeform; the mode is saved only when it changes.
+
 ## Decisions
 
 - **Re-applying Tile and Organize resizes every terminal.** Accepted: filling

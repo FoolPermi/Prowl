@@ -44,8 +44,8 @@ extension CanvasView {
     relayoutIfDeferred()
   }
 
-  /// Drop expand state without animation — used right before a relayout
-  /// (Arrange/Organize) takes over the canvas.
+  /// Drop expand state without animation — used right before a relayout takes
+  /// over the canvas, or when the expanded card closed.
   func cancelExpandForRelayout() {
     expandedTabID = nil
   }
@@ -101,13 +101,18 @@ extension CanvasView {
   /// `allowsZoomOut` (new cards); otherwise the zoom the user chose is kept
   /// (spatial navigation).
   func revealCard(_ tabID: TerminalTabID, allowsZoomOut: Bool) {
+    // Reveal relative to where a running viewport animation (e.g. a refit) is
+    // heading, so a card the refit already shows does not cancel it.
+    let base =
+      viewportAnimator.activeTarget
+      ?? CanvasViewportAnimator.Snapshot(offset: canvasOffset, scale: canvasScale)
     guard let layout = layoutStore.cardLayouts[tabID.canvasCardKey],
       let target = CanvasViewportMath.reveal(
         cardFrame: layout.frame(titleBarHeight: titleBarHeight),
         in: CanvasViewportMath.Viewport(
           size: viewportSize,
-          scale: canvasScale,
-          offset: canvasOffset,
+          scale: base.scale,
+          offset: base.offset,
           bottomReserve: bottomToolbarReserve
         ),
         margin: revealMargin,

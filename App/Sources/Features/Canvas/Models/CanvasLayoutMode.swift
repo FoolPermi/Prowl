@@ -17,13 +17,12 @@ enum CanvasLayoutMode: Equatable, Sendable {
     if case .automatic(let kind) = self { kind } else { nil }
   }
 
-  /// What a change in the set of cards should do in this mode.
-  func cardSetChangeAction(isCardExpanded: Bool, hasMeasuredViewport: Bool) -> CanvasCardSetChangeAction {
+  /// What a change in the set of cards should do in this mode. A relayout
+  /// cannot run while a card is expanded or being resized, or before the
+  /// viewport is measured; it then waits.
+  func cardSetChangeAction(canRelayoutNow: Bool) -> CanvasCardSetChangeAction {
     guard let kind = automaticKind else { return .placeNewCards }
-    // A relayout cancels the expansion, so wait until the card is restored
-    // (and until the viewport the layout depends on is known).
-    guard !isCardExpanded, hasMeasuredViewport else { return .placeNewCardsAndRelayoutLater }
-    return .relayout(kind)
+    return canRelayoutNow ? .relayout(kind) : .placeNewCardsAndRelayoutLater
   }
 }
 

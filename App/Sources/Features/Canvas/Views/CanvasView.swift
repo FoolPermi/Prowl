@@ -39,6 +39,9 @@ struct CanvasView: View {
   /// A card-set change arrived while a relayout could not run (a card was
   /// expanded); apply the automatic layout once it is restored.
   @State var needsAutomaticRelayout = false
+  /// The viewport of the last fit-to-view; a relayout refits only while the
+  /// viewport still shows it.
+  @State var fittedViewport: CanvasViewportAnimator.Snapshot?
   @State var hasSeenCanvasCards = false
   @State var viewportSize: CGSize = .zero
   @State var configReloadCounter = 0
@@ -380,9 +383,7 @@ struct CanvasView: View {
     // implicit transaction), so drive it explicitly. Only the toggled card's
     // value changes, so the rest stay put.
     .animation(expandAnimation, value: isCardExpanded)
-    // A new card renders once before `placeUnpositionedCards` gives it a spot;
-    // keep it invisible (but mounted, so its terminal can take focus) until then.
-    .opacity(layoutStore.cardLayouts[cardKey] == nil ? 0 : 1)
+    .hiddenUntilPlaced(layoutStore.cardLayouts[cardKey] != nil)
     .zIndex(zIndex(for: tab.id, cardKey: cardKey))
   }
 
@@ -594,14 +595,16 @@ struct CanvasView: View {
     guard activeResize[tabID] != nil else { return }
     if var layout = layoutStore.cardLayouts[cardKey] {
       let resized = resizedFrame(for: tabID, baseLayout: layout)
-      // Settle the card into its committed size with a short animation (cards
-      // no longer animate size on their own; the canvas drives it explicitly).
-      withAnimation(.easeInOut(duration: 0.2)) {
-        layout.position = resized.center
-        layout.size = resized.size
-        layoutStore.cardLayouts[cardKey] = layout
+      if resized.center != layout.position || resized.size != layout.size {
+        // Settle the card into its committed size with a short animation (cards
+        // no longer animate size on their own; the canvas drives it explicitly).
+        withAnimation(.easeInOut(duration: 0.2)) {
+          layout.position = resized.center
+          layout.size = resized.size
+          layoutStore.cardLayouts[cardKey] = layout
+        }
+        enterFreeformLayout()
       }
-      enterFreeformLayout()
     }
     activeResize[tabID] = nil
     for surface in surfaces {
@@ -731,6 +734,14 @@ struct CanvasView: View {
 }
 
 extension View {
+  /// A new card renders once before it gets a spot. Keep it invisible (but
+  /// mounted, so its terminal can take focus) until then, and let it appear at
+  /// its spot rather than fly there from the canvas origin.
+  fileprivate func hiddenUntilPlaced(_ isPlaced: Bool) -> some View {
+    opacity(isPlaced ? 1 : 0)
+      .animation(nil, value: isPlaced)
+  }
+
   /// Run `action` when the canvas has focus and `shortcut` is pressed. The
   /// handler listens on the app-default key when the binding is disabled
   /// (`shortcut == nil`), so it must ignore the press rather than fire.

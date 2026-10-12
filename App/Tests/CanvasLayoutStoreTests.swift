@@ -80,7 +80,21 @@ struct CanvasLayoutStoreTests {
     #expect(store.layoutForEntry(cardKeys: [], defaultKind: .tile) == nil)
   }
 
-  @Test func canvasWhoseCardsAreAllUnknownStartsInTheDefaultLayout() {
+  @Test func rememberedAutomaticLayoutSurvivesUnknownCards() {
+    // Without terminal layout restore, every launch brings new tab IDs.
+    let defaults = makeDefaults()
+    defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
+    let store = CanvasLayoutStore(defaults: defaults)
+    store.setCardLayouts(["tab-a": CanvasCardLayout(position: .zero)])
+    store.mode = .automatic(.organize)
+
+    let restoredStore = CanvasLayoutStore(defaults: defaults)
+
+    #expect(restoredStore.layoutForEntry(cardKeys: ["tab-x", "tab-y"], defaultKind: .tile) == .organize)
+    #expect(restoredStore.mode == .automatic(.organize))
+  }
+
+  @Test func freeformCanvasWhoseCardsAreAllUnknownStartsInTheDefaultLayout() {
     let defaults = makeDefaults()
     defer { defaults.removePersistentDomain(forName: defaultsSuiteName(defaults)) }
     let store = CanvasLayoutStore(defaults: defaults)

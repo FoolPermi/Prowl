@@ -79,13 +79,15 @@ or click to pin it open.
 Arrange, Organize, and Tile are **modes**, not one-shot commands. The active one
 is highlighted in the toolbar (its tooltip says so), and Canvas keeps applying it:
 
-- **Adding or closing a card** lays every card out again and fits the view, so
-  a tiled board stays tiled and an organized board stays a grid. New cards
-  appear in place while the others glide to their new spots.
+- **Adding or closing a card** lays every card out again, so a tiled board stays
+  tiled and an organized board stays a grid. New cards appear in place while the
+  others glide to their new spots. If the view showed the whole board, it fits
+  the board again; if you had zoomed or panned, your zoom is kept and the view
+  follows the focused card.
 - **Resizing the window** (or toggling the sidebar) lays the cards out again
   once the size settles.
-- **While a card is expanded**, nothing moves behind it; the layout catches up
-  when you restore the card.
+- **While a card is expanded or being resized**, nothing moves; the layout
+  catches up afterwards.
 
 **Dragging or resizing a card** switches the board to **freeform**: no layout
 button is highlighted, every card stays where you put it, and a new card goes

@@ -98,9 +98,15 @@ private final class CanvasViewportAnimationTimerBox {
 @MainActor
 @Observable
 final class CanvasViewportAnimator {
-  struct Snapshot {
+  struct Snapshot: Equatable {
     var offset: CGSize
     var scale: CGFloat
+
+    /// Equal up to sub-point rounding.
+    func isClose(to other: Snapshot) -> Bool {
+      abs(offset.width - other.offset.width) < 0.5 && abs(offset.height - other.offset.height) < 0.5
+        && abs(scale - other.scale) < 0.0005
+    }
   }
 
   @ObservationIgnored private let timerBox = CanvasViewportAnimationTimerBox()
@@ -109,6 +115,11 @@ final class CanvasViewportAnimator {
   private var startTime: CFTimeInterval = 0
   private var duration: CFTimeInterval = 0
   private var onUpdate: (@MainActor (Snapshot) -> Void)?
+
+  /// Where the running animation ends, or nil when idle.
+  var activeTarget: Snapshot? {
+    timerBox.timer == nil ? nil : targetSnapshot
+  }
 
   func animate(
     from start: Snapshot,

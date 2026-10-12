@@ -23,16 +23,12 @@ struct CanvasLayoutModeTests {
 
   @Test func automaticLayoutRelayoutsWhenItCan() {
     let mode = CanvasLayoutMode.automatic(.tile)
-    #expect(mode.cardSetChangeAction(isCardExpanded: false, hasMeasuredViewport: true) == .relayout(.tile))
-    #expect(mode.cardSetChangeAction(isCardExpanded: true, hasMeasuredViewport: true) == .placeNewCardsAndRelayoutLater)
-    #expect(
-      mode.cardSetChangeAction(isCardExpanded: false, hasMeasuredViewport: false) == .placeNewCardsAndRelayoutLater)
+    #expect(mode.cardSetChangeAction(canRelayoutNow: true) == .relayout(.tile))
+    #expect(mode.cardSetChangeAction(canRelayoutNow: false) == .placeNewCardsAndRelayoutLater)
   }
 
   @Test func freeformOnlyPlacesNewCards() {
-    #expect(
-      CanvasLayoutMode.freeform.cardSetChangeAction(isCardExpanded: false, hasMeasuredViewport: true) == .placeNewCards)
-    #expect(
-      CanvasLayoutMode.freeform.cardSetChangeAction(isCardExpanded: true, hasMeasuredViewport: true) == .placeNewCards)
+    #expect(CanvasLayoutMode.freeform.cardSetChangeAction(canRelayoutNow: true) == .placeNewCards)
+    #expect(CanvasLayoutMode.freeform.cardSetChangeAction(canRelayoutNow: false) == .placeNewCards)
   }
 }

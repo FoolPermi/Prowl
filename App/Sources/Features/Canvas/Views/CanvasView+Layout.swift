@@ -24,14 +24,15 @@ extension CanvasView {
   /// viewport: in the remembered automatic layout, or — on a fresh canvas — in
   /// the default layout from Settings. Freeform keeps the stored positions.
   func performEntryLayoutIfNeeded() {
+    guard !hasPerformedInitialFit, hasMeasuredViewport else { return }
     let keys = currentCardKeys()
-    guard !hasPerformedInitialFit, hasMeasuredViewport, !keys.isEmpty else { return }
+    guard !keys.isEmpty else { return }
     hasPerformedInitialFit = true
     let defaultKind = settingsFile.global.canvasDefaultLayout.layoutKind
     if let kind = layoutStore.layoutForEntry(cardKeys: keys, defaultKind: defaultKind) {
       layoutCards(kind)
     }
-    fitToView(canvasSize: viewportSize)
+    fitToView()
   }
 
   /// React to cards appearing or closing. In an automatic layout every card is
@@ -48,12 +49,8 @@ extension CanvasView {
       return
     }
 
-    let isExpandedCardShown = expandedTabID.map { cardKeys.contains($0.canvasCardKey) } ?? false
     let action =
-      layoutStore.mode?.cardSetChangeAction(
-        isCardExpanded: isExpandedCardShown,
-        hasMeasuredViewport: hasMeasuredViewport
-      ) ?? .placeNewCards
+      layoutStore.mode?.cardSetChangeAction(canRelayoutNow: canRelayoutNow(cardKeys: cardKeys)) ?? .placeNewCards
     switch action {
     case .relayout(let kind):
       let newKeys = cardKeys.filter { layoutStore.cardLayouts[$0] == nil }
@@ -62,17 +59,29 @@ extension CanvasView {
     case .placeNewCards:
       followNewCard(among: placeUnpositionedCards(cardKeys), states: terminalManager.activeWorktreeStates)
     case .placeNewCardsAndRelayoutLater:
-      followNewCard(among: placeUnpositionedCards(cardKeys), states: terminalManager.activeWorktreeStates)
+      // Set before following: restoring an expanded card for the new one runs
+      // the deferred relayout right away.
       needsAutomaticRelayout = true
+      followNewCard(among: placeUnpositionedCards(cardKeys), states: terminalManager.activeWorktreeStates)
     }
+  }
+
+  /// A relayout would cancel an expanded card, or move a card the user is
+  /// resizing, and Arrange and Tile need a measured viewport.
+  func canRelayoutNow(cardKeys: [String]) -> Bool {
+    let isExpandedCardShown = expandedTabID.map { cardKeys.contains($0.canvasCardKey) } ?? false
+    return !isExpandedCardShown && activeResize.isEmpty && hasMeasuredViewport
   }
 
   /// Re-apply the automatic layout once a deferred change can run (the
   /// expanded card was restored).
   func relayoutIfDeferred() {
     guard needsAutomaticRelayout else { return }
-    needsAutomaticRelayout = false
-    guard let kind = layoutStore.mode?.automaticKind else { return }
+    guard let kind = layoutStore.mode?.automaticKind else {
+      needsAutomaticRelayout = false
+      return
+    }
+    guard canRelayoutNow(cardKeys: currentCardKeys()) else { return }
     relayoutAutomatically(kind)
   }
 
@@ -80,16 +89,19 @@ extension CanvasView {
   /// cards out again — once the size settles, to avoid reflowing every
   /// terminal on each frame of a live resize.
   func relayoutAfterViewportChange() async {
-    guard hasPerformedInitialFit, hasMeasuredViewport,
-      let kind = layoutStore.mode?.automaticKind,
-      viewportSize != automaticLayoutViewportSize
-    else { return }
+    guard hasPerformedInitialFit, hasMeasuredViewport, layoutStore.mode?.automaticKind != nil else { return }
+    guard viewportSize != automaticLayoutViewportSize || needsAutomaticRelayout else { return }
     try? await Task.sleep(for: .milliseconds(300))
     guard !Task.isCancelled else { return }
-    if expandedTabID != nil {
-      needsAutomaticRelayout = true
-    } else {
+    // Re-read after the wait: the user may have picked another layout, moved a
+    // card, or a card-set change may already have laid the cards out.
+    guard let kind = layoutStore.mode?.automaticKind,
+      viewportSize != automaticLayoutViewportSize || needsAutomaticRelayout
+    else { return }
+    if canRelayoutNow(cardKeys: currentCardKeys()) {
       relayoutAutomatically(kind)
+    } else {
+      needsAutomaticRelayout = true
     }
   }
 
@@ -107,31 +119,29 @@ extension CanvasView {
   /// toolbar buttons, the keyboard shortcuts, the command palette, and the CLI.
   func applyLayout(_ kind: CanvasLayoutKind) {
     layoutStore.mode = .automatic(kind)
-    needsAutomaticRelayout = false
-    withAnimation(expandAnimation) {
-      cancelExpandForRelayout()
-    }
-    relayoutAutomatically(kind)
+    cancelExpandForRelayout()
+    // Choosing a layout shows the whole board again.
+    relayoutAutomatically(kind, refitting: true)
   }
 
-  /// Lay out every card with `kind` and refit the viewport. Existing cards
-  /// glide to their new frames; cards that had no frame yet appear directly at
-  /// theirs instead of flying in from the canvas origin.
-  func relayoutAutomatically(_ kind: CanvasLayoutKind) {
+  /// Lay out every card with `kind`, animated. Existing cards glide to their
+  /// new frames; a card without a frame yet appears at its own (see
+  /// `cardView`). The viewport refits when it showed the whole board before
+  /// (or `refitting` asks for it); a viewport the user zoomed or panned keeps
+  /// its zoom and follows the focused card instead.
+  func relayoutAutomatically(_ kind: CanvasLayoutKind, refitting: Bool = false) {
+    needsAutomaticRelayout = false
     guard let result = computeLayouts(kind) else { return }
-    let newLayouts = result.layouts.filter { layoutStore.cardLayouts[$0.key] == nil }
-    if !newLayouts.isEmpty {
-      var transaction = Transaction()
-      transaction.disablesAnimations = true
-      withTransaction(transaction) {
-        layoutStore.setCardLayouts(layoutStore.cardLayouts.merging(newLayouts) { _, new in new })
-      }
-    }
+    let refits = refitting || isViewportFitted
     withAnimation(expandAnimation) {
       layoutStore.applyLayouts(result.layouts, order: result.keys)
-      fitToView(canvasSize: viewportSize)
     }
     automaticLayoutViewportSize = viewportSize
+    if refits {
+      animateFitToView()
+    } else if let focused = selectionState.primaryTabID {
+      revealCard(focused, allowsZoomOut: true)
+    }
   }
 
   /// Lay out every card with `kind`, without animation or touching the
@@ -157,6 +167,7 @@ extension CanvasView {
 
   /// A drag or resize by the user ends any automatic layout.
   func enterFreeformLayout() {
+    guard layoutStore.mode != .freeform else { return }
     layoutStore.mode = .freeform
     needsAutomaticRelayout = false
   }
@@ -225,30 +236,49 @@ extension CanvasView {
 
   // MARK: - Viewport
 
-  /// Adjust scale and offset so all cards fit within the viewport.
-  func fitToView(canvasSize: CGSize) {
-    guard canvasSize.width > 0, canvasSize.height > 0 else { return }
-
+  /// The viewport that shows every card, or nil without cards or a measured
+  /// viewport.
+  func fitTarget() -> CanvasViewportAnimator.Snapshot? {
     let bounds = currentCardKeys().reduce(CGRect.null) { bounds, key in
       guard let layout = layoutStore.cardLayouts[key] else { return bounds }
       return bounds.union(layout.frame(titleBarHeight: titleBarHeight))
     }
-
     guard
       let fit = CanvasViewportMath.fit(
         bounds: bounds,
-        viewport: canvasSize,
+        viewport: viewportSize,
         bottomReserve: bottomToolbarReserve,
         padding: viewportFitPadding
       )
-    else {
-      return
-    }
+    else { return nil }
+    return CanvasViewportAnimator.Snapshot(offset: fit.offset, scale: fit.scale)
+  }
 
-    canvasOffset = fit.offset
-    canvasScale = fit.scale
-    lastCanvasScale = fit.scale
-    lastCanvasOffset = canvasOffset
+  /// Show every card at once, immediately.
+  func fitToView() {
+    guard let target = fitTarget() else { return }
+    viewportAnimator.cancel()
+    canvasOffset = target.offset
+    canvasScale = target.scale
+    lastCanvasScale = target.scale
+    lastCanvasOffset = target.offset
+    fittedViewport = target
+  }
+
+  /// Show every card at once, animated.
+  func animateFitToView() {
+    guard let target = fitTarget() else { return }
+    animateViewport(to: target)
+    fittedViewport = target
+  }
+
+  /// Whether the viewport shows the fitted board — or is animating there — so
+  /// a relayout should refit it rather than keep a zoom the user chose.
+  var isViewportFitted: Bool {
+    guard let fittedViewport else { return false }
+    let current =
+      viewportAnimator.activeTarget ?? CanvasViewportAnimator.Snapshot(offset: canvasOffset, scale: canvasScale)
+    return current.isClose(to: fittedViewport)
   }
 
   /// Animate the viewport to `target` with `viewportAnimator`, which drives

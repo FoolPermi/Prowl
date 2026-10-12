@@ -82,7 +82,9 @@ final class CanvasLayoutStore {
   /// Layouts stored before modes existed load as `freeform`, so upgrading never
   /// rearranges a canvas the user arranged.
   var mode: CanvasLayoutMode? {
-    didSet { save() }
+    didSet {
+      if mode != oldValue { save() }
+    }
   }
 
   init(defaults: UserDefaults = .standard) {
@@ -99,13 +101,15 @@ final class CanvasLayoutStore {
   nonisolated deinit {}
 
   /// Resolve the layout for entering Canvas with `cardKeys` on screen. A canvas
-  /// that never chose a mode, or whose cards were all unknown when it loaded,
-  /// starts in `defaultKind`. Returns the automatic layout to apply, or nil in
-  /// freeform.
+  /// that never chose a mode starts in `defaultKind`, and so does a freeform
+  /// canvas whose cards were all unknown when it loaded (there is nothing left
+  /// of the arrangement). A remembered automatic layout always applies: it
+  /// does not depend on card positions. Returns the automatic layout to apply,
+  /// or nil in freeform.
   func layoutForEntry(cardKeys: [String], defaultKind: CanvasLayoutKind) -> CanvasLayoutKind? {
     guard !cardKeys.isEmpty else { return nil }
     let isFreshCanvas = !cardKeys.contains { initiallyLoadedCardKeys.contains($0) }
-    if mode == nil || isFreshCanvas {
+    if mode == nil || (mode == .freeform && isFreshCanvas) {
       mode = .automatic(defaultKind)
     }
     return mode?.automaticKind
