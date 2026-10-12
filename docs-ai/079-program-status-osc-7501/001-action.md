@@ -14,7 +14,7 @@ the index and the state after the last merge.
 | 2026-10-11 | Slice 3: Claude Code `.verified`; the acceptance list replayed in an isolated Debug instance; the pane's session identity moved from the screen fingerprint to Claude's pid registry (`process_log` / `exact`, a three-miss hold across transient read failures, `agents read` reports current evidence). Six review rounds | #895, [004](004-claude-verified.md) |
 | 2026-10-11 | Slice 4: Pi `.verified`; the acceptance list replayed with Pi 1.1.0; a 3 s settle window after each wake keeps the screen reads that attribute an in-process `/new` or `/resume`. Five review rounds | #896, [005](005-pi-verified.md) |
 | 2026-10-11 | #895 merged; #896 merged after the reconciliation with `main` (both producers `.verified`, the two table tests combined with an unverified codex control, the support rows in the manual and the living docs) | this record |
-| 2026-10-12 | Oh My Pi `.verified` (`app=omp`, 18.8.7+): harness baseline with omp 18.10.0, the acceptance list replayed in an isolated Debug instance, the table tests extended | [006](006-omp-verified.md) |
+| 2026-10-12 | Oh My Pi `.verified` (`app=omp`, 18.8.7+): harness baseline with omp 18.10.0, the acceptance list replayed in an isolated Debug instance, the table tests extended | #900, [006](006-omp-verified.md) |
 
 ## Outcome & current state (as of 2026-10-12)
 
@@ -99,7 +99,7 @@ the index and the state after the last merge.
 
 ## Refs
 
-PRs #887, #892, #893, #895, #896. Records [002](002-fork-action-and-bridge.md),
+PRs #887, #892, #893, #895, #896, #900. Records [002](002-fork-action-and-bridge.md),
 [003](003-generic-provider.md), [004](004-claude-verified.md), [005](005-pi-verified.md),
 [006](006-omp-verified.md);
 [producer-baseline.md](producer-baseline.md). Living docs:

@@ -85,6 +85,6 @@ the tests fail without the change, and the OSC 133 explanation against Ghostty's
 ## Refs
 
 Builds on #887 (slice 1), #893 (slice 2), #895 (slice 3), #896 (slice 4, the Pi flip this
-repeats). Living doc [068/omp.md](../068-agent-state-providers/omp.md); baseline
+repeats). PR #900. Living doc [068/omp.md](../068-agent-state-providers/omp.md); baseline
 [producer-baseline.md](producer-baseline.md). Oh My Pi's OSC 7501 support shipped in
 18.8.7 (`@oh-my-pi/pi-coding-agent` CHANGELOG).
