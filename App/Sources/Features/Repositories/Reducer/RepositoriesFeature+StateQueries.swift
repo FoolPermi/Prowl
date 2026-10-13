@@ -692,3 +692,9 @@ extension RepositoriesFeature.State {
     repositories.contains(where: { $0.kind == .plain }) || !orderedWorktreeRows().isEmpty
   }
 }
+
+/// Identities accepted by the archived-worktree cleanup confirmation.
+struct ArchivedAutoDeleteTarget: Equatable, Hashable, Sendable {
+  var worktreeID: Worktree.ID
+  var repositoryID: Repository.ID
+}

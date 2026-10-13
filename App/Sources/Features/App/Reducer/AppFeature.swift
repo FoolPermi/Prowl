@@ -129,6 +129,19 @@ struct AppFeature {
   @Dependency(GitClientDependency.self) var gitClient
   @Dependency(WorkflowRuntimeClient.self) var workflowRuntimeClient
 
+  private func archivedAutoDeleteEvaluation(state: State, period: AutoDeletePeriod?) -> Effect<Action> {
+    let expired = period.map { state.repositories.expiredArchivedWorktrees(for: $0, now: now) } ?? []
+    let spansRepositories = Set(expired.map(\.repository.id)).count > 1
+    let names = expired.map {
+      spansRepositories ? "\($0.repository.name) / \($0.worktree.name)" : $0.worktree.name
+    }
+    let targets = expired.map {
+      ArchivedAutoDeleteTarget(worktreeID: $0.worktree.id, repositoryID: $0.repository.id)
+    }
+    return .send(
+      .settings(.archivedAutoDeletePeriodChangeEvaluated(period, expiringWorktreeNames: names, targets: targets)))
+  }
+
   var body: some Reducer<State, Action> {
     let core = Reduce<State, Action> { state, action in
       switch action {
@@ -471,7 +484,7 @@ struct AppFeature {
           into: &state
         )
 
-      case .settings(.delegate(.settingsChanged(let settings))):
+      case .settings(.delegate(.settingsChanged(let settings, let initialArchivedAutoDeleteTargets))):
         let shouldCheckSystemNotificationPermission =
           settings.systemNotificationsEnabled && !state.lastKnownSystemNotificationsEnabled
         let didChangeAgentIslandEnabled =
@@ -522,7 +535,8 @@ struct AppFeature {
           .send(
             .repositories(
               .setArchivedAutoDeletePeriod(
-                settings.archivedAutoDeletePeriod
+                settings.archivedAutoDeletePeriod,
+                initialTargets: initialArchivedAutoDeleteTargets
               )
             )
           ),
@@ -586,15 +600,17 @@ struct AppFeature {
         return .none
 
       case .settings(.delegate(.archivedAutoDeletePeriodChangeRequested(let period))):
-        let expired = period.map { state.repositories.expiredArchivedWorktrees(for: $0, now: now) } ?? []
-        // Prefix the repository only when it is needed to tell same-named worktrees apart.
-        let spansRepositories = Set(expired.map(\.repository.id)).count > 1
-        let expiringWorktreeNames = expired.map { entry in
-          spansRepositories ? "\(entry.repository.name) / \(entry.worktree.name)" : entry.worktree.name
+        return archivedAutoDeleteEvaluation(state: state, period: period)
+
+      case .settings(.delegate(.archivedAutoDeleteConfirmationRequested(let period, let targets))):
+        guard state.settings.pendingArchivedAutoDeletePeriod == period else { return .none }
+        let currentTargets = state.repositories.expiredArchivedWorktrees(for: period, now: now).map {
+          ArchivedAutoDeleteTarget(worktreeID: $0.worktree.id, repositoryID: $0.repository.id)
         }
-        return .send(
-          .settings(.archivedAutoDeletePeriodChangeEvaluated(period, expiringWorktreeNames: expiringWorktreeNames))
-        )
+        guard Set(currentTargets).isSubset(of: Set(targets)) else {
+          return archivedAutoDeleteEvaluation(state: state, period: period)
+        }
+        return .send(.settings(.applyArchivedAutoDeletePeriod(period, targets: currentTargets)))
 
       case .settings(.delegate(.editWorkspace(let repositoryID))):
         guard state.repositories.repositories[id: repositoryID]?.isWorkspace == true else {

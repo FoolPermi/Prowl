@@ -128,7 +128,7 @@ struct ArchivedAutoDeletePeriodSettingsTests {
     #expect(title == "Delete 1 archived worktree now?")
   }
 
-  @Test(.dependencies) func confirmingAppliesAndPersistsPeriod() async {
+  @Test(.dependencies) func confirmingRequestsRevalidationBeforePersistence() async {
     var settings = GlobalSettings.default
     settings.archivedAutoDeletePeriod = .thirtyDays
     @Shared(.settingsFile) var settingsFile
@@ -142,11 +142,9 @@ struct ArchivedAutoDeletePeriodSettingsTests {
 
     await store.send(.alert(.presented(.confirmArchivedAutoDeletePeriod(.oneDay)))) {
       $0.alert = nil
-      $0.pendingArchivedAutoDeletePeriod = nil
-      $0.archivedAutoDeletePeriod = .oneDay
     }
-    await store.receive(\.delegate.settingsChanged)
-    #expect(settingsFile.global.archivedAutoDeletePeriod == .oneDay)
+    await store.receive(\.delegate.archivedAutoDeleteConfirmationRequested)
+    #expect(settingsFile.global.archivedAutoDeletePeriod == .thirtyDays)
   }
 
   @Test(.dependencies) func cancellingKeepsPreviousPeriod() async {
@@ -300,6 +298,10 @@ struct ArchivedAutoDeletePeriodAppTests {
       \.settings.archivedAutoDeletePeriodChangeEvaluated
     ) {
       $0.settings.pendingArchivedAutoDeletePeriod = .sevenDays
+      $0.settings.pendingArchivedAutoDeleteTargets = [
+        ArchivedAutoDeleteTarget(worktreeID: "/tmp/first/old-alpha", repositoryID: "/tmp/first"),
+        ArchivedAutoDeleteTarget(worktreeID: "/tmp/second/old-beta", repositoryID: "/tmp/second"),
+      ]
       $0.settings.alert = AlertState {
         TextState("Delete 2 archived worktrees now?")
       } actions: {
@@ -359,15 +361,12 @@ struct ArchivedAutoDeletePeriodAppTests {
     await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
     await store.send(.settings(.alert(.presented(.confirmArchivedAutoDeletePeriod(.sevenDays))))) {
       $0.settings.alert = nil
-      $0.settings.pendingArchivedAutoDeletePeriod = nil
-      $0.settings.archivedAutoDeletePeriod = .sevenDays
     }
     await store.receive(\.repositories.setArchivedAutoDeletePeriod) {
       $0.repositories.archivedAutoDeletePeriod = .sevenDays
     }
-    await store.receive(\.repositories.autoDeleteExpiredArchivedWorktrees)
-    await store.receive(\.repositories.worktreeLifecycle.deleteWorktreeConfirmed)
-    await store.receive(\.repositories.worktreeLifecycle.deleteWorktreeConfirmed)
+    await store.receive(\.repositories.deleteExpiredArchivedWorktree)
+    await store.receive(\.repositories.deleteExpiredArchivedWorktree)
     await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
     await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
     await store.skipReceivedActions()
@@ -375,6 +374,165 @@ struct ArchivedAutoDeletePeriodAppTests {
     #expect(
       store.state.repositories.archivedWorktrees.map(\.id).sorted() == ["/tmp/first/recent", "/tmp/second"]
     )
+  }
+
+  @Test(.dependencies) func newlyExpiredTargetRequiresAnotherConfirmation() async {
+    @Shared(.settingsFile) var settingsFile
+    $settingsFile.withLock { $0.global = .default }
+    let date = LockIsolated(archivedAutoDeleteTestNow)
+    let removed = LockIsolated<[Worktree.ID]>([])
+    let store = TestStore(initialState: makeState(currentPeriod: nil)) {
+      AppFeature()
+    } withDependencies: {
+      $0.date = DateGenerator { date.value }
+      $0.gitClient.removeWorktree = { worktree, _ in
+        removed.withValue { $0.append(worktree.id) }
+        return worktree.workingDirectory
+      }
+    }
+    store.exhaustivity = .off
+    await store.send(.settings(.delegate(.archivedAutoDeletePeriodChangeRequested(.sevenDays))))
+    await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
+    date.withValue { $0 = $0.addingTimeInterval(7 * 86_400) }
+    await store.send(.settings(.alert(.presented(.confirmArchivedAutoDeletePeriod(.sevenDays)))))
+    await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
+    #expect(settingsFile.global.archivedAutoDeletePeriod == nil)
+    #expect(store.state.repositories.archivedAutoDeletePeriod == nil)
+    #expect(String(customDumping: store.state.settings.alert).contains("recent"))
+    #expect(removed.value.isEmpty)
+    await store.send(.settings(.alert(.presented(.confirmArchivedAutoDeletePeriod(.sevenDays)))))
+    await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
+    await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
+    await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
+    await store.skipReceivedActions()
+    #expect(settingsFile.global.archivedAutoDeletePeriod == .sevenDays)
+    #expect(Set(removed.value) == ["/tmp/first/old-alpha", "/tmp/second/old-beta", "/tmp/first/recent"])
+  }
+
+  @Test(.dependencies) func expiryAfterAcceptanceDoesNotExpandInitialCleanup() async {
+    let date = LockIsolated(archivedAutoDeleteTestNow)
+    let removed = LockIsolated<[Worktree.ID]>([])
+    let store = TestStore(initialState: makeState(currentPeriod: nil)) {
+      AppFeature()
+    } withDependencies: {
+      $0.date = DateGenerator { date.value }
+      $0.gitClient.removeWorktree = { worktree, _ in
+        removed.withValue { $0.append(worktree.id) }
+        return worktree.workingDirectory
+      }
+    }
+    store.exhaustivity = .off
+    await store.send(.settings(.delegate(.archivedAutoDeletePeriodChangeRequested(.sevenDays))))
+    await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
+    await store.send(.settings(.alert(.presented(.confirmArchivedAutoDeletePeriod(.sevenDays)))))
+    await store.receive(\.settings.applyArchivedAutoDeletePeriod)
+    // The accepted snapshot must survive settingsChanged and setArchivedAutoDeletePeriod effects.
+    date.withValue { $0 = $0.addingTimeInterval(7 * 86_400) }
+    await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
+    await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
+    await store.skipReceivedActions()
+    #expect(Set(removed.value) == ["/tmp/first/old-alpha", "/tmp/second/old-beta"])
+    #expect(store.state.repositories.archivedWorktrees.contains { $0.id == "/tmp/first/recent" })
+  }
+
+  @Test(.dependencies) func repositoryRefreshAddsTargetAndRequiresAnotherConfirmation() async {
+    @Shared(.settingsFile) var settingsFile
+    $settingsFile.withLock { $0.global = .default }
+    var state = makeState(currentPeriod: nil)
+    let restored = makeWorktree("restored", repoRoot: "/tmp/first")
+    state.repositories.archivedWorktrees.append(ArchivedWorktree(id: restored.id, archivedAt: daysAgo(20)))
+    var refreshed = Array(state.repositories.repositories)
+    refreshed[0] = makeRepository(
+      "/tmp/first", name: "first", worktrees: Array(refreshed[0].worktrees) + [restored]
+    )
+    let store = TestStore(initialState: state) { AppFeature() }
+    store.exhaustivity = .off
+    await store.send(.settings(.delegate(.archivedAutoDeletePeriodChangeRequested(.sevenDays))))
+    await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
+    await store.send(
+      .repositories(
+        .repositoriesLoaded(
+          refreshed, failures: [], roots: refreshed.map(\.rootURL), animated: false
+        )))
+    await store.send(.settings(.alert(.presented(.confirmArchivedAutoDeletePeriod(.sevenDays)))))
+    await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
+    #expect(settingsFile.global.archivedAutoDeletePeriod == nil)
+    #expect(store.state.repositories.deletingWorktreeIDs.isEmpty)
+    #expect(
+      store.state.settings.pendingArchivedAutoDeleteTargets.contains(
+        ArchivedAutoDeleteTarget(worktreeID: restored.id, repositoryID: "/tmp/first")
+      ))
+    #expect(String(customDumping: store.state.settings.alert).contains("restored"))
+    await store.send(.settings(.alert(.presented(.dismiss))))
+    await store.finish()
+  }
+
+  @Test(.dependencies) func unarchivingBeforeConfirmationExcludesTarget() async {
+    let removed = LockIsolated<[Worktree.ID]>([])
+    let store = TestStore(initialState: makeState(currentPeriod: nil)) {
+      AppFeature()
+    } withDependencies: {
+      $0.gitClient.removeWorktree = { worktree, _ in
+        removed.withValue { $0.append(worktree.id) }
+        return worktree.workingDirectory
+      }
+    }
+    store.exhaustivity = .off
+    await store.send(.settings(.delegate(.archivedAutoDeletePeriodChangeRequested(.sevenDays))))
+    await store.receive(\.settings.archivedAutoDeletePeriodChangeEvaluated)
+    await store.send(.repositories(.worktreeLifecycle(.unarchiveWorktree("/tmp/first/old-alpha"))))
+    await store.send(.settings(.alert(.presented(.confirmArchivedAutoDeletePeriod(.sevenDays)))))
+    await store.receive(\.repositories.worktreeLifecycle.worktreeDeleted)
+    await store.skipReceivedActions()
+    #expect(removed.value == ["/tmp/second/old-beta"])
+    #expect(store.state.settings.archivedAutoDeletePeriod == .sevenDays)
+  }
+
+  @Test(.dependencies) func initialCleanupUsesAcceptedSnapshotButLaterCleanupUsesCurrentExpiry() async {
+    let removed = LockIsolated<[Worktree.ID]>([])
+    // All three are now expired, but only alpha was in the accepted snapshot.
+    let store = TestStore(initialState: makeState(currentPeriod: nil).repositories) {
+      RepositoriesFeature()
+    } withDependencies: {
+      $0.date.now = archivedAutoDeleteTestNow.addingTimeInterval(7 * 86_400)
+      $0.gitClient.removeWorktree = { worktree, _ in
+        removed.withValue { $0.append(worktree.id) }
+        return worktree.workingDirectory
+      }
+    }
+    store.exhaustivity = .off
+    await store.send(
+      .setArchivedAutoDeletePeriod(
+        .sevenDays,
+        initialTargets: [
+          ArchivedAutoDeleteTarget(worktreeID: "/tmp/first/old-alpha", repositoryID: "/tmp/first")
+        ]))
+    await store.receive(\.worktreeLifecycle.worktreeDeleted)
+    await store.skipReceivedActions()
+    #expect(removed.value == ["/tmp/first/old-alpha"])
+    await store.send(.autoDeleteExpiredArchivedWorktrees)
+    await store.receive(\.worktreeLifecycle.worktreeDeleted)
+    await store.receive(\.worktreeLifecycle.worktreeDeleted)
+    await store.skipReceivedActions()
+    #expect(Set(removed.value) == ["/tmp/first/old-alpha", "/tmp/second/old-beta", "/tmp/first/recent"])
+  }
+
+  @Test(.dependencies, arguments: [false, true])
+  func initialCleanupRechecksUnarchivedOrRemovedTargets(removedFromRepository: Bool) async {
+    var state = makeState(currentPeriod: .sevenDays).repositories
+    let target = ArchivedAutoDeleteTarget(worktreeID: "/tmp/first/old-alpha", repositoryID: "/tmp/first")
+    if removedFromRepository {
+      state.repositories[id: target.repositoryID] = makeRepository(
+        "/tmp/first", name: "first",
+        worktrees: state.repositories[id: target.repositoryID]!.worktrees.filter { $0.id != target.worktreeID }
+      )
+    } else {
+      state.archivedWorktrees.removeAll { $0.id == target.worktreeID }
+    }
+    let store = TestStore(initialState: state) { RepositoriesFeature() }
+    await store.send(.deleteExpiredArchivedWorktree(target, period: .sevenDays))
+    #expect(store.state.deletingWorktreeIDs.isEmpty)
+    await store.finish()
   }
 
   @Test(.dependencies) func cancellingLeavesRepositoriesUntouched() async {
@@ -393,6 +551,7 @@ struct ArchivedAutoDeletePeriodAppTests {
     await store.send(.settings(.alert(.presented(.dismiss)))) {
       $0.settings.alert = nil
       $0.settings.pendingArchivedAutoDeletePeriod = nil
+      $0.settings.pendingArchivedAutoDeleteTargets = []
     }
     await store.finish()
     #expect(store.state.settings.archivedAutoDeletePeriod == nil)

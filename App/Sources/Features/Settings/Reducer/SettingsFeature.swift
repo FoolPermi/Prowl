@@ -38,9 +38,10 @@ struct SettingsFeature {
     var archivedAutoDeletePeriod: AutoDeletePeriod?
     /// The period awaiting confirmation while its delete warning is up. The picker shows it so
     /// clearing it on Cancel is a real state change that moves the menu back to the saved value.
-    /// Confirming re-evaluates expiry at that moment, so a warning left open for a long time can
-    /// under-report what gets deleted.
+    /// The parent revalidates the retained identities before applying the period, and asks again
+    /// if expiry or a repository refresh has added targets while the warning was open.
     var pendingArchivedAutoDeletePeriod: AutoDeletePeriod?
+    var pendingArchivedAutoDeleteTargets: [ArchivedAutoDeleteTarget] = []
     var promptForWorktreeCreation: Bool
     var fetchRemoteBeforeWorktreeCreation: Bool
     var defaultWorktreeBaseDirectoryPath: String
@@ -247,7 +248,10 @@ struct SettingsFeature {
     /// The picker routes here instead of through a binding so a shorter period never applies
     /// before the parent has checked which archived worktrees it would delete right away.
     case archivedAutoDeletePeriodSelected(AutoDeletePeriod?)
-    case archivedAutoDeletePeriodChangeEvaluated(AutoDeletePeriod?, expiringWorktreeNames: [String])
+    case archivedAutoDeletePeriodChangeEvaluated(
+      AutoDeletePeriod?, expiringWorktreeNames: [String], targets: [ArchivedAutoDeleteTarget] = []
+    )
+    case applyArchivedAutoDeletePeriod(AutoDeletePeriod?, targets: [ArchivedAutoDeleteTarget])
     case setAgentIslandEnabled(Bool)
     case setAgentIslandFloatingPosition(displayID: String, normalizedPosition: Double)
     case setAgentIslandSilentOpacity(Double)
@@ -289,7 +293,7 @@ struct SettingsFeature {
 
   @CasePathable
   enum Delegate: Equatable {
-    case settingsChanged(GlobalSettings)
+    case settingsChanged(GlobalSettings, initialArchivedAutoDeleteTargets: [ArchivedAutoDeleteTarget]? = nil)
     case terminalFontSizeChanged(Float32?)
     case terminalLayoutSnapshotCleared(success: Bool)
     case cliInstallCompleted(CLIInstallResultMessage)
@@ -297,6 +301,7 @@ struct SettingsFeature {
     /// Asks the parent which archived worktrees `period` would delete right away; it answers
     /// with `archivedAutoDeletePeriodChangeEvaluated`.
     case archivedAutoDeletePeriodChangeRequested(AutoDeletePeriod?)
+    case archivedAutoDeleteConfirmationRequested(AutoDeletePeriod, targets: [ArchivedAutoDeleteTarget])
   }
 
   @Dependency(FeatureFlags.self) private var featureFlags
@@ -455,18 +460,25 @@ struct SettingsFeature {
         }
         return .send(.delegate(.archivedAutoDeletePeriodChangeRequested(period)))
 
-      case .archivedAutoDeletePeriodChangeEvaluated(let period, let expiringWorktreeNames):
+      case .archivedAutoDeletePeriodChangeEvaluated(let period, let expiringWorktreeNames, let targets):
         guard period != state.archivedAutoDeletePeriod else { return .none }
         guard let period, !expiringWorktreeNames.isEmpty else {
           state.archivedAutoDeletePeriod = period
-          return persist(state)
+          return persist(state, initialArchivedAutoDeleteTargets: targets)
         }
+        state.pendingArchivedAutoDeleteTargets = targets
         state.pendingArchivedAutoDeletePeriod = period
         state.alert = archivedAutoDeleteConfirmationAlert(
           period: period,
           expiringWorktreeNames: expiringWorktreeNames
         )
         return .none
+
+      case .applyArchivedAutoDeletePeriod(let period, let targets):
+        state.pendingArchivedAutoDeletePeriod = nil
+        state.pendingArchivedAutoDeleteTargets = []
+        state.archivedAutoDeletePeriod = period
+        return persist(state, initialArchivedAutoDeleteTargets: targets)
 
       case .setAgentIslandEnabled(let enabled):
         state.agentIslandEnabled = enabled
@@ -661,19 +673,23 @@ struct SettingsFeature {
 
       case .alert(.presented(.openSystemNotificationSettings)):
         state.pendingArchivedAutoDeletePeriod = nil
+        state.pendingArchivedAutoDeleteTargets = []
         return .run { _ in
           await systemNotificationClient.openSettings()
         }
 
       case .alert(.presented(.confirmArchivedAutoDeletePeriod(let period))):
-        state.pendingArchivedAutoDeletePeriod = nil
-        guard period != state.archivedAutoDeletePeriod else { return .none }
-        state.archivedAutoDeletePeriod = period
-        return persist(state)
+        guard state.pendingArchivedAutoDeletePeriod == period else { return .none }
+        return .send(
+          .delegate(
+            .archivedAutoDeleteConfirmationRequested(
+              period, targets: state.pendingArchivedAutoDeleteTargets
+            )))
 
       case .alert:
         // Any other outcome, including an alert that replaced the confirmation, cancels the change.
         state.pendingArchivedAutoDeletePeriod = nil
+        state.pendingArchivedAutoDeleteTargets = []
         return .none
 
       case .repositorySettings(.delegate(.editWorkspace(let repositoryID))):
@@ -756,7 +772,8 @@ struct SettingsFeature {
   private func persist(
     _ state: State,
     captureAnalytics: Bool = true,
-    emitSettingsChanged: Bool = true
+    emitSettingsChanged: Bool = true,
+    initialArchivedAutoDeleteTargets: [ArchivedAutoDeleteTarget]? = nil
   ) -> Effect<Action> {
     let settings = state.globalSettings
     @Shared(.settingsFile) var settingsFile
@@ -769,7 +786,8 @@ struct SettingsFeature {
       analyticsClient.reset()
     }
     if emitSettingsChanged {
-      return .send(.delegate(.settingsChanged(settings)))
+      return .send(
+        .delegate(.settingsChanged(settings, initialArchivedAutoDeleteTargets: initialArchivedAutoDeleteTargets)))
     }
     return .none
   }

@@ -452,8 +452,9 @@ struct RepositoriesFeature {
     case loadPersistedRepositories
     case pinnedWorktreeIDsLoaded([Worktree.ID])
     case archivedWorktreesLoaded([ArchivedWorktree])
-    case setArchivedAutoDeletePeriod(AutoDeletePeriod?)
+    case setArchivedAutoDeletePeriod(AutoDeletePeriod?, initialTargets: [ArchivedAutoDeleteTarget]? = nil)
     case autoDeleteExpiredArchivedWorktrees
+    case deleteExpiredArchivedWorktree(ArchivedAutoDeleteTarget, period: AutoDeletePeriod)
     case repositoryOrderIDsLoaded([Repository.ID])
     case worktreeOrderByRepositoryLoaded([Repository.ID: [Worktree.ID]])
     case lastFocusedWorktreeIDLoaded(Worktree.ID?)

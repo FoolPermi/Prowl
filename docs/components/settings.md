@@ -122,6 +122,13 @@ same status as `prowl skills list`.
 - A Debug build that was not built with `make build-app` has no staged skills; the section
   then reports that the bundled skills are unavailable.
 
+## Archived auto-delete confirmation
+
+When changing the archived auto-delete period, the confirmation lists the worktrees eligible for immediate deletion.
+Prowl checks again when you confirm: if another worktree has expired or a repository refresh reveals another eligible
+worktree, it updates the warning and asks you to confirm again. The first cleanup uses the accepted targets only;
+worktrees unarchived or removed before cleanup are skipped. Later automatic cleanup continues to follow the selected period.
+
 ## Gotchas for agents
 
 - Many behaviors are **global with a per-repo override** (copy-files, base

@@ -126,34 +126,39 @@ extension RepositoriesFeature {
       state.archivedWorktrees = archivedWorktrees
       return .none
 
-    case .setArchivedAutoDeletePeriod(let period):
+    case .setArchivedAutoDeletePeriod(let period, let initialTargets):
       state.archivedAutoDeletePeriod = period
-      guard period != nil else { return .none }
-      return .send(.autoDeleteExpiredArchivedWorktrees)
+      guard let period else { return .none }
+      guard let initialTargets else { return .send(.autoDeleteExpiredArchivedWorktrees) }
+      return .merge(initialTargets.map { .send(.deleteExpiredArchivedWorktree($0, period: period)) })
 
     case .autoDeleteExpiredArchivedWorktrees:
-      guard let period = state.archivedAutoDeletePeriod else {
-        return .none
-      }
-      let expired = state.expiredArchivedWorktrees(for: period, now: now)
-      guard !expired.isEmpty else {
-        return .none
-      }
-      @Shared(.settingsFile) var settingsFile
-      let deleteEffects: [Effect<Action>] = expired.map { entry in
-        let shouldDeleteBranch =
-          settingsFile.global.deleteBranchOnAutomaticCleanup
-          && state.prowlCreatedWorktreeIDs.contains(entry.worktree.id)
-        return .send(
-          .worktreeLifecycle(
-            .deleteWorktreeConfirmed(
-              entry.worktree.id,
-              entry.repository.id,
-              deleteBranch: shouldDeleteBranch
+      guard let period = state.archivedAutoDeletePeriod else { return .none }
+      return .merge(
+        state.expiredArchivedWorktrees(for: period, now: now).map {
+          .send(
+            .deleteExpiredArchivedWorktree(
+              ArchivedAutoDeleteTarget(worktreeID: $0.worktree.id, repositoryID: $0.repository.id), period: period
             ))
-        )
-      }
-      return .merge(deleteEffects)
+        })
+
+    case .deleteExpiredArchivedWorktree(let target, let period):
+      // Recheck membership immediately before entering the existing deletion path. An accepted
+      // snapshot must not delete a worktree that was unarchived or removed in the meantime.
+      guard state.archivedAutoDeletePeriod == period,
+        state.expiredArchivedWorktrees(for: period, now: now).contains(where: {
+          $0.worktree.id == target.worktreeID && $0.repository.id == target.repositoryID
+        })
+      else { return .none }
+      @Shared(.settingsFile) var settingsFile
+      let shouldDeleteBranch =
+        settingsFile.global.deleteBranchOnAutomaticCleanup
+        && state.prowlCreatedWorktreeIDs.contains(target.worktreeID)
+      return reduceWorktreeLifecycle(
+        state: &state,
+        action: .deleteWorktreeConfirmed(
+          target.worktreeID, target.repositoryID, deleteBranch: shouldDeleteBranch
+        ))
 
     case .repositoryOrderIDsLoaded(let repositoryOrderIDs):
       state.repositoryOrderIDs = repositoryOrderIDs

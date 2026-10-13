@@ -6512,7 +6512,7 @@ struct RepositoriesFeatureTests {
     store.exhaustivity = .off
 
     await store.send(.autoDeleteExpiredArchivedWorktrees)
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed) {
+    await store.receive(\.deleteExpiredArchivedWorktree) {
       $0.deletingWorktreeIDs = [expiredWorktree.id]
     }
     await store.receive(\.worktreeLifecycle.worktreeDeleted)
@@ -6547,7 +6547,7 @@ struct RepositoriesFeatureTests {
     store.exhaustivity = .off
 
     await store.send(.autoDeleteExpiredArchivedWorktrees)
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed) {
+    await store.receive(\.deleteExpiredArchivedWorktree) {
       $0.deletingWorktreeIDs = [expiredWorktree.id]
     }
   }
@@ -6637,9 +6637,9 @@ struct RepositoriesFeatureTests {
     store.exhaustivity = .off
 
     await store.send(.autoDeleteExpiredArchivedWorktrees)
-    // Both deleteWorktreeConfirmed should fire
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed)
-    await store.receive(\.worktreeLifecycle.deleteWorktreeConfirmed)
+    // Both guarded automatic deletions should fire
+    await store.receive(\.deleteExpiredArchivedWorktree)
+    await store.receive(\.deleteExpiredArchivedWorktree)
     // Both worktreeDeleted should complete without crash
     await store.receive(\.worktreeLifecycle.worktreeDeleted)
     await store.receive(\.worktreeLifecycle.worktreeDeleted)
