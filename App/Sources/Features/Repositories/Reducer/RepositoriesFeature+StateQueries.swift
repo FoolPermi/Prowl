@@ -303,6 +303,28 @@ extension RepositoriesFeature.State {
     return groups
   }
 
+  struct ExpiredArchivedWorktree: Equatable {
+    var worktree: Worktree
+    var repository: Repository
+  }
+
+  /// Archived worktrees an auto-delete pass with `period` would remove at `now`. Settings uses
+  /// this to warn before a new period applies, so it must stay in sync with the deletion pass.
+  func expiredArchivedWorktrees(for period: AutoDeletePeriod, now: Date) -> [ExpiredArchivedWorktree] {
+    let cutoff = now.addingTimeInterval(-Double(period.rawValue) * secondsPerDay)
+    return archivedWorktrees.compactMap { entry in
+      guard
+        entry.archivedAt <= cutoff,
+        let (worktree, repository) = findWorktreeAndRepository(worktreeID: entry.id, state: self),
+        !isMainWorktree(worktree),
+        !deletingWorktreeIDs.contains(entry.id)
+      else {
+        return nil
+      }
+      return ExpiredArchivedWorktree(worktree: worktree, repository: repository)
+    }
+  }
+
   var canCreateWorktree: Bool {
     if repositories.isEmpty {
       return false

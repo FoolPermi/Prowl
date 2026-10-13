@@ -585,6 +585,17 @@ struct AppFeature {
       case .settings(.delegate(.terminalFontSizeChanged)):
         return .none
 
+      case .settings(.delegate(.archivedAutoDeletePeriodChangeRequested(let period))):
+        let expired = period.map { state.repositories.expiredArchivedWorktrees(for: $0, now: now) } ?? []
+        // Prefix the repository only when it is needed to tell same-named worktrees apart.
+        let spansRepositories = Set(expired.map(\.repository.id)).count > 1
+        let expiringWorktreeNames = expired.map { entry in
+          spansRepositories ? "\(entry.repository.name) / \(entry.worktree.name)" : entry.worktree.name
+        }
+        return .send(
+          .settings(.archivedAutoDeletePeriodChangeEvaluated(period, expiringWorktreeNames: expiringWorktreeNames))
+        )
+
       case .settings(.delegate(.editWorkspace(let repositoryID))):
         guard state.repositories.repositories[id: repositoryID]?.isWorkspace == true else {
           return .none

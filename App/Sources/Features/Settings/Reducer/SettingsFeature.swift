@@ -36,6 +36,11 @@ struct SettingsFeature {
     var deleteBranchOnAutomaticCleanup: Bool
     var mergedWorktreeAction: MergedWorktreeAction?
     var archivedAutoDeletePeriod: AutoDeletePeriod?
+    /// The period awaiting confirmation while its delete warning is up. The picker shows it so
+    /// clearing it on Cancel is a real state change that moves the menu back to the saved value.
+    /// Confirming re-evaluates expiry at that moment, so a warning left open for a long time can
+    /// under-report what gets deleted.
+    var pendingArchivedAutoDeletePeriod: AutoDeletePeriod?
     var promptForWorktreeCreation: Bool
     var fetchRemoteBeforeWorktreeCreation: Bool
     var defaultWorktreeBaseDirectoryPath: String
@@ -153,6 +158,10 @@ struct SettingsFeature {
       ghosttyConfigPath = settings.ghosttyConfigPath
     }
 
+    var displayedArchivedAutoDeletePeriod: AutoDeletePeriod? {
+      pendingArchivedAutoDeletePeriod ?? archivedAutoDeletePeriod
+    }
+
     /// True only when the language the *next normal launch* (no command-line
     /// override) would resolve to differs from this launch's snapshot — so
     /// system → the same explicit language the system already resolved to
@@ -235,6 +244,10 @@ struct SettingsFeature {
     case setCommandFinishedNotificationThreshold(String)
     case setTerminalFontSize(Float32?)
     case setGhosttyConfigPath(String?)
+    /// The picker routes here instead of through a binding so a shorter period never applies
+    /// before the parent has checked which archived worktrees it would delete right away.
+    case archivedAutoDeletePeriodSelected(AutoDeletePeriod?)
+    case archivedAutoDeletePeriodChangeEvaluated(AutoDeletePeriod?, expiringWorktreeNames: [String])
     case setAgentIslandEnabled(Bool)
     case setAgentIslandFloatingPosition(displayID: String, normalizedPosition: Double)
     case setAgentIslandSilentOpacity(Double)
@@ -265,6 +278,7 @@ struct SettingsFeature {
   enum Alert: Equatable {
     case dismiss
     case openSystemNotificationSettings
+    case confirmArchivedAutoDeletePeriod(AutoDeletePeriod)
   }
 
   enum CLIInstallResultMessage: Equatable {
@@ -280,6 +294,9 @@ struct SettingsFeature {
     case terminalLayoutSnapshotCleared(success: Bool)
     case cliInstallCompleted(CLIInstallResultMessage)
     case editWorkspace(Repository.ID)
+    /// Asks the parent which archived worktrees `period` would delete right away; it answers
+    /// with `archivedAutoDeletePeriodChangeEvaluated`.
+    case archivedAutoDeletePeriodChangeRequested(AutoDeletePeriod?)
   }
 
   @Dependency(FeatureFlags.self) private var featureFlags
@@ -428,6 +445,28 @@ struct SettingsFeature {
         guard state.ghosttyConfigPath != normalizedPath else { return .none }
         state.ghosttyConfigPath = normalizedPath
         return persist(state)
+
+      case .archivedAutoDeletePeriodSelected(let period):
+        guard period != state.archivedAutoDeletePeriod else { return .none }
+        // "Never" cannot delete anything, so it needs no confirmation.
+        guard period != nil else {
+          state.archivedAutoDeletePeriod = nil
+          return persist(state)
+        }
+        return .send(.delegate(.archivedAutoDeletePeriodChangeRequested(period)))
+
+      case .archivedAutoDeletePeriodChangeEvaluated(let period, let expiringWorktreeNames):
+        guard period != state.archivedAutoDeletePeriod else { return .none }
+        guard let period, !expiringWorktreeNames.isEmpty else {
+          state.archivedAutoDeletePeriod = period
+          return persist(state)
+        }
+        state.pendingArchivedAutoDeletePeriod = period
+        state.alert = archivedAutoDeleteConfirmationAlert(
+          period: period,
+          expiringWorktreeNames: expiringWorktreeNames
+        )
+        return .none
 
       case .setAgentIslandEnabled(let enabled):
         state.agentIslandEnabled = enabled
@@ -621,11 +660,20 @@ struct SettingsFeature {
         return .none
 
       case .alert(.presented(.openSystemNotificationSettings)):
+        state.pendingArchivedAutoDeletePeriod = nil
         return .run { _ in
           await systemNotificationClient.openSettings()
         }
 
+      case .alert(.presented(.confirmArchivedAutoDeletePeriod(let period))):
+        state.pendingArchivedAutoDeletePeriod = nil
+        guard period != state.archivedAutoDeletePeriod else { return .none }
+        state.archivedAutoDeletePeriod = period
+        return persist(state)
+
       case .alert:
+        // Any other outcome, including an alert that replaced the confirmation, cancels the change.
+        state.pendingArchivedAutoDeletePeriod = nil
         return .none
 
       case .repositorySettings(.delegate(.editWorkspace(let repositoryID))):
@@ -669,6 +717,40 @@ struct SettingsFeature {
     // writeback: state set while the Settings window is closed (or closed
     // while an alert is up) would wedge as permanently "presented".
     .ifLet(\.$alert, action: \.alert)
+  }
+
+  private func archivedAutoDeleteConfirmationAlert(
+    period: AutoDeletePeriod,
+    expiringWorktreeNames: [String]
+  ) -> AlertState<Alert> {
+    let count = expiringWorktreeNames.count
+    let title =
+      count == 1
+      ? String(localized: "Delete 1 archived worktree now?")
+      : String(localized: "Delete \(count) archived worktrees now?")
+    let maxListedNames = 10
+    var listedNames = Array(expiringWorktreeNames.prefix(maxListedNames))
+    if count > maxListedNames {
+      listedNames.append(String(localized: "and \(count - maxListedNames) more"))
+    }
+    let explanation = String(
+      localized: """
+        Changing auto-delete to “\(period.label)” permanently deletes these archived worktrees right away. \
+        This cannot be undone.
+        """
+    )
+    return AlertState {
+      TextState(title)
+    } actions: {
+      ButtonState(role: .destructive, action: .confirmArchivedAutoDeletePeriod(period)) {
+        TextState(String(localized: "Change and Delete"))
+      }
+      ButtonState(role: .cancel, action: .dismiss) {
+        TextState(String(localized: "Cancel"))
+      }
+    } message: {
+      TextState(explanation + "\n\n" + listedNames.joined(separator: "\n"))
+    }
   }
 
   private func persist(

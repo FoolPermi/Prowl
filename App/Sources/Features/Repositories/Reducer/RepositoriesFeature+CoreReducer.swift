@@ -135,40 +135,23 @@ extension RepositoriesFeature {
       guard let period = state.archivedAutoDeletePeriod else {
         return .none
       }
-      let cutoff = now.addingTimeInterval(-Double(period.rawValue) * secondsPerDay)
-      let expiredEntries = state.archivedWorktrees.filter { $0.archivedAt <= cutoff }
-      guard !expiredEntries.isEmpty else {
+      let expired = state.expiredArchivedWorktrees(for: period, now: now)
+      guard !expired.isEmpty else {
         return .none
       }
       @Shared(.settingsFile) var settingsFile
-      var deleteEffects: [Effect<Action>] = []
-      for entry in expiredEntries {
-        guard
-          let (worktree, repository) = findWorktreeAndRepository(
-            worktreeID: entry.id,
-            state: state
-          ),
-          !state.isMainWorktree(worktree),
-          !state.deletingWorktreeIDs.contains(entry.id)
-        else {
-          continue
-        }
+      let deleteEffects: [Effect<Action>] = expired.map { entry in
         let shouldDeleteBranch =
           settingsFile.global.deleteBranchOnAutomaticCleanup
-          && state.prowlCreatedWorktreeIDs.contains(worktree.id)
-        deleteEffects.append(
-          .send(
-            .worktreeLifecycle(
-              .deleteWorktreeConfirmed(
-                worktree.id,
-                repository.id,
-                deleteBranch: shouldDeleteBranch
-              ))
-          )
+          && state.prowlCreatedWorktreeIDs.contains(entry.worktree.id)
+        return .send(
+          .worktreeLifecycle(
+            .deleteWorktreeConfirmed(
+              entry.worktree.id,
+              entry.repository.id,
+              deleteBranch: shouldDeleteBranch
+            ))
         )
-      }
-      guard !deleteEffects.isEmpty else {
-        return .none
       }
       return .merge(deleteEffects)
 
