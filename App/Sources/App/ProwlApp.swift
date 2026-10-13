@@ -488,7 +488,7 @@ struct ProwlApp: App {
 
       return BranchNameSuggestionContext(
         repositoryName: repositoryName,
-        existingBranchNames: Array(existingBranchNames.prefix(10)),
+        existingBranchNames: existingBranchNames,
         terminalContexts: hints,
         llmAvailable: FoundationModelLLMService().isAvailable
       )
