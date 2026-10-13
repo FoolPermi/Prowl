@@ -432,14 +432,12 @@ struct AppFeature {
           }
           @Shared(.repositorySettings(repository.rootURL)) var repositorySettings
           @Shared(.userRepositorySettings(repository.rootURL)) var userRepositorySettings
-          @Shared(.repositoryAppearances) var repositoryAppearances
           var repoSettingsState = RepositorySettingsFeature.State(
             rootURL: repository.rootURL,
             repositoryID: repository.id,
             repositoryKind: repository.kind,
             settings: repositorySettings,
-            userSettings: userRepositorySettings,
-            appearance: repositoryAppearances[repository.id] ?? .empty
+            userSettings: userRepositorySettings
           )
           repoSettingsState.workspace = repository.workspace
           repoSettingsState.globalCopyIgnoredOnWorktreeCreate =
