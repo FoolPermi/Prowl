@@ -161,6 +161,17 @@ extension RepositoriesFeature.State {
     worktreeInfoByID[worktreeID]
   }
 
+  // The rate limit that keeps the worktree's pull request status from refreshing, if any.
+  func githubRateLimitStatus(forWorktreeID worktreeID: Worktree.ID?) -> GithubRateLimitStatus? {
+    guard let worktreeID, let repositoryID = repositoryID(containing: worktreeID) else {
+      return nil
+    }
+    return GithubRateLimitStatus(
+      blocks: githubRateLimitBlocks,
+      hosts: githubHostsByRepositoryID[repositoryID] ?? []
+    )
+  }
+
   func codeHost(for repositoryID: Repository.ID) -> CodeHost {
     codeHostByRepositoryID[repositoryID] ?? .unknown
   }

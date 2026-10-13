@@ -124,9 +124,18 @@ Prowl paces its pull request queries:
 ## Rate limits
 
 The `gh` account Prowl uses is usually shared with other tools and agents, and
-GitHub limits requests per account. When GitHub refuses a request for its rate
-limit, Prowl stops sending GitHub requests of any kind:
+GitHub limits requests per account. GitHub keeps a separate budget for each host
+and each API (GraphQL and REST), so Prowl holds back requests per host and API.
+When GitHub refuses a request for its rate limit:
 
+- A primary limit (the hourly budget of one API, such as "API rate limit
+  exceeded") holds back only that API on that host. PR status uses GraphQL;
+  `gh run` commands (re-run, copy logs) use REST.
+- A secondary limit (`Retry-After`, "secondary rate limit", abuse detection), or a
+  refusal that does not say which limit, holds back every API on that host.
+- Other hosts are not affected. Commands that let `gh` pick the host from the
+  repository's remotes (`gh run`, `gh repo view`, `gh auth status`) share one
+  "default host" group.
 - It waits as long as GitHub's `Retry-After` header asks. Without one, it waits
   until `X-RateLimit-Reset` when GitHub reports an exhausted budget. Otherwise,
   it waits one minute, then doubles the wait after each further refusal, up to
@@ -134,15 +143,26 @@ limit, Prowl stops sending GitHub requests of any kind:
 - When the wait ends, one request goes out first. If GitHub answers it, Prowl
   resumes; if GitHub refuses again, the next, longer wait starts.
 - It never retries a refused query as smaller per-repository queries.
-- The toolbar shows **GitHub rate-limited, retrying at HH:MM**, and so does
-  Settings → **GitHub**. PR status keeps its last known state until then.
-- PR actions (merge, close, mark ready, re-run, copy logs) are refused with
-  **GitHub rate-limited until HH:MM** and send nothing to GitHub.
+- The toolbar shows **GitHub rate-limited, retrying at HH:MM** when GraphQL on a
+  host of the selected worktree's repository is held back. PR status keeps its
+  last known state until then. Click the status to see each held-back host and
+  API, the request GitHub refused, its HTTP status, rate-limit headers, and
+  message. **Retry Now** sends the next request at once instead of at the retry
+  time.
+- Settings → **GitHub** lists every held-back host and API with the same details
+  and a **Retry Now** button.
+- Prowl logs each hold with the same details (subsystem `com.onevcat.prowl`,
+  category `GithubRateLimit`).
+- PR actions (merge, close, mark ready, re-run, copy logs) whose host and API are
+  held back are refused with **GitHub rate-limited until HH:MM** and send nothing
+  to GitHub.
 
 ## Gotchas for agents
 
-- "GitHub rate-limited until HH:MM" means Prowl is holding off for the whole
-  account. Requests from other tools on that account can extend the limit too.
+- "GitHub rate-limited until HH:MM" means Prowl is holding off for that host and
+  API. Requests from other tools on that account can extend the limit too. Click
+  the toolbar status, or open Settings → **GitHub**, to see which request GitHub
+  refused and what it answered.
 - A remote GitHub cannot resolve for the account (a deleted fork, a repository the
   account cannot see) fails only its own repository's refresh, and Prowl does not
   retry it with smaller queries. Fix or remove the remote to stop the failure.
