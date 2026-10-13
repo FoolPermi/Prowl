@@ -1136,13 +1136,8 @@ struct AppFeature {
           }
         )
 
-      case .alert(.dismiss):
-        state.alert = nil
-        return .none
-
       case .alert(.presented(.confirmQuit)):
         analyticsClient.capture("app_quit", appQuitProperties(launchedAt: state.launchedAt))
-        state.alert = nil
         return .run { @MainActor _ in
           appLifecycleClient.terminate()
         }
@@ -1243,6 +1238,9 @@ struct AppFeature {
       }
     }
     core
+      // Clears the alert after any button action; without it, state is only cleared by the
+      // view's dismiss writeback and can stay "presented" when that writeback never arrives.
+      .ifLet(\.$alert, action: \.alert)
       .ifLet(\.$workflowStart, action: \.workflowStart) {
         WorkflowStartFeature()
       }
