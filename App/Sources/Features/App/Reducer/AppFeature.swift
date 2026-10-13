@@ -681,7 +681,7 @@ struct AppFeature {
           return .none
         }
         setRepositoryOpenActionID(
-          action.settingsID, rootURL: worktree.repositoryRootURL, state: &state)
+          action.settingsID, rootURL: worktree.repositoryRootURL, into: &state)
         return .none
 
       case .openActionResetToAutomatic:
@@ -694,7 +694,7 @@ struct AppFeature {
         if !state.openActionIsAutomatic {
           setRepositoryOpenActionID(
             OpenWorktreeAction.automaticSettingsID, rootURL: worktree.repositoryRootURL,
-            state: &state)
+            into: &state)
         }
         @Shared(.settingsFile) var settingsFile
         state.openActionSelection = OpenWorktreeAction.fromSettingsID(

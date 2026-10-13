@@ -279,6 +279,7 @@ struct AppFeatureDefaultEditorTests {
     let storedOpenActionID = withDependencies {
       $0.settingsFileStorage = storage.storage
       $0.settingsFileURL = settingsFileURL
+      $0.repositoryLocalSettingsStorage = localStorage.storage
     } operation: {
       @Shared(.repositorySettings(worktree.repositoryRootURL)) var repositorySettings
       return repositorySettings.openActionID
@@ -334,6 +335,7 @@ struct AppFeatureDefaultEditorTests {
     let storedOpenActionID = withDependencies {
       $0.settingsFileStorage = storage.storage
       $0.settingsFileURL = settingsFileURL
+      $0.repositoryLocalSettingsStorage = localStorage.storage
     } operation: {
       @Shared(.repositorySettings(worktree.repositoryRootURL)) var repositorySettings
       return repositorySettings.openActionID
