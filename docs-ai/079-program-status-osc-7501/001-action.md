@@ -85,7 +85,8 @@ the index and the state after the last merge.
   background work as Working; deferred, the OSC path applies the root-only rule.
 - [#897](https://github.com/onevcat/Prowl/issues/897): panes under `/tmp` or `/var` never
   resolve a cwd-keyed transcript session (`resolvingSymlinksInPath()` strips `/private`);
-  found during the slice 4 replay, pre-existing on `main`.
+  found during the slice 4 replay, pre-existing on `main`. Resolved: the resolver now
+  derives the physical variant with `realpath(3)`.
 - [#894](https://github.com/onevcat/Prowl/issues/894): `agents dispatch` on a manual Claude
   Code 2.1.296 pane is refused because the composer placeholder reads as a draft.
 - Producer gap to report upstream: Claude Code keeps the root `working` while a background
