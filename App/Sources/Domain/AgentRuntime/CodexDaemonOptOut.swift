@@ -14,9 +14,14 @@ nonisolated enum CodexDaemonOptOut {
   /// release that starts the daemon by default, so older releases need no opt-out.
   static let minimumVersion = (0, 156, 0)
 
-  /// Subcommands that run the interactive TUI and accept the flag. Any other subcommand, such as
-  /// `exec`, either runs without the daemon already or rejects the flag.
-  private static let interactiveSubcommands: Set<String> = ["resume", "fork"]
+  /// Subcommands that do not run the interactive TUI (`codex --help`, 0.162.1, with aliases and
+  /// earlier names). They either never use the daemon or reject the flag; `resume` and `fork`
+  /// accept it.
+  private static let nonInteractiveSubcommands: Set<String> = [
+    "agents", "exec", "e", "review", "login", "logout", "mcp", "mcp-server", "plugin", "app-server",
+    "remote-control", "app", "completion", "update", "doctor", "sandbox", "debug", "apply", "a", "queue",
+    "archive", "delete", "migrate-rollouts", "unarchive", "cloud", "exec-server", "features", "help",
+  ]
 
   /// Whether `codex --version` output (`codex-cli 0.162.1`, `codex-cli 0.163.0-alpha.11`)
   /// names a release that accepts the flag.
@@ -34,12 +39,14 @@ nonisolated enum CodexDaemonOptOut {
     return (major, minor, patch) >= minimumVersion
   }
 
-  /// Whether the invocation starts the interactive TUI and does not already opt out.
+  /// Whether the invocation starts the interactive TUI and does not already opt out. Profile
+  /// options come before the extra arguments, so a subcommand can follow them. Option values are
+  /// not told apart from positionals; a value that spells a subcommand only skips the flag.
   static func applies(to arguments: [String], promptArgumentIndex: Int?) -> Bool {
-    let options = arguments.prefix { $0 != "--" }
-    guard !options.contains(argument) else { return false }
-    guard let first = arguments.first, promptArgumentIndex != 0 else { return true }
-    return first.hasPrefix("-") || interactiveSubcommands.contains(first)
+    let options = arguments.indices.prefix { arguments[$0] != "--" }
+      .filter { $0 != promptArgumentIndex }
+      .map { arguments[$0] }
+    return !options.contains(argument) && !options.contains(where: nonInteractiveSubcommands.contains)
   }
 
   /// Inserts the flag ahead of the prompt positional and any `--` sentinel. The prompt stays the

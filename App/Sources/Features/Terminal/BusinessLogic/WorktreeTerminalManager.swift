@@ -187,7 +187,8 @@ final class WorktreeTerminalManager {
           runtime: request.plan.runtime.rawValue,
           message: "The launch target changed during managed hook preparation."
         )
-        return .success(PreparedAgentProfileLaunch(context: context, warnings: [warning]))
+        return .success(
+          PreparedAgentProfileLaunch(context: fallbackContext(context, preparation), warnings: [warning]))
       }
       return applyManagedHook(preparation, context: context, resources: resources)
     }
@@ -204,11 +205,7 @@ final class WorktreeTerminalManager {
     resources: AgentHookResources?
   ) -> Result<PreparedAgentProfileLaunch, AgentProfileLaunchError> {
     let runtimeRawValue = context.request.plan.runtime.rawValue
-    // A launch without its managed hook still takes the runtime's fallback invocation.
-    let fallbackContext =
-      preparation.fallbackInvocation.map {
-        context.replacingPlan(context.request.plan.replacingInvocation($0))
-      } ?? context
+    let fallbackContext = fallbackContext(context, preparation)
     func degraded(_ message: String) -> Result<PreparedAgentProfileLaunch, AgentProfileLaunchError> {
       .success(
         PreparedAgentProfileLaunch(
@@ -278,6 +275,15 @@ final class WorktreeTerminalManager {
         warnings: preparation.warning.map { [$0] } ?? []
       )
     )
+  }
+
+  /// A launch without its managed hook still takes the runtime's fallback invocation.
+  private func fallbackContext(
+    _ context: FrozenAgentProfileLaunchContext,
+    _ preparation: AgentManagedHookPreparation
+  ) -> FrozenAgentProfileLaunchContext {
+    guard let invocation = preparation.fallbackInvocation else { return context }
+    return context.replacingPlan(context.request.plan.replacingInvocation(invocation))
   }
 
   /// Materialize a runtime's merged hook settings into the owner-only store and render the

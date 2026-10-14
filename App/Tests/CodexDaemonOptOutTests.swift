@@ -47,6 +47,24 @@ struct CodexDaemonOptOutTests {
     #expect(!CodexDaemonOptOut.applies(to: ["--no-daemon", "Prompt"], promptArgumentIndex: 1))
     #expect(CodexDaemonOptOut.applies(to: ["--", "--no-daemon"], promptArgumentIndex: nil))
   }
+
+  /// Generated model, effort, and mode options come before a profile's extra arguments, so the
+  /// subcommand can follow options (review R1-001).
+  @Test(arguments: [
+    ["--model", "gpt-5", "exec", "Prompt"],
+    ["--model", "gpt-5", "-c", "model_reasoning_effort=high", "e", "Prompt"],
+    ["--dangerously-bypass-approvals-and-sandbox", "review", "Prompt"],
+    ["-m", "gpt-5", "apply", "Prompt"],
+  ])
+  func optionsBeforeANonInteractiveSubcommandSkipTheFlag(arguments: [String]) {
+    #expect(!CodexDaemonOptOut.applies(to: arguments, promptArgumentIndex: arguments.count - 1))
+  }
+
+  @Test func optionsBeforeAnInteractiveSubcommandKeepTheFlag() {
+    #expect(CodexDaemonOptOut.applies(to: ["--model", "gpt-5", "resume", "--last"], promptArgumentIndex: nil))
+    #expect(CodexDaemonOptOut.applies(to: ["--model", "gpt-5", "fork", "--last"], promptArgumentIndex: nil))
+    #expect(CodexDaemonOptOut.applies(to: ["--model", "gpt-5", "exec"], promptArgumentIndex: 2))
+  }
 }
 
 @Suite(.serialized) struct CodexDaemonOptOutPreparationTests {
