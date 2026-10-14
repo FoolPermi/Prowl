@@ -65,6 +65,22 @@ struct CodexDaemonOptOutTests {
     #expect(CodexDaemonOptOut.applies(to: ["--model", "gpt-5", "fork", "--last"], promptArgumentIndex: nil))
     #expect(CodexDaemonOptOut.applies(to: ["--model", "gpt-5", "exec"], promptArgumentIndex: 2))
   }
+
+  /// Review R2-001: an option value that spells a subcommand is not a subcommand.
+  @Test(arguments: [
+    ["--cd", "app", "Prompt"],
+    ["-C", "app", "Prompt"],
+    ["--add-dir", "review", "--cd", "debug", "Prompt"],
+    ["-m", "exec", "-s", "workspace-write", "Prompt"],
+  ])
+  func optionValuesThatSpellASubcommandKeepTheFlag(arguments: [String]) {
+    #expect(CodexDaemonOptOut.applies(to: arguments, promptArgumentIndex: arguments.count - 1))
+  }
+
+  @Test func aSubcommandAfterADirectoryOptionStillSkipsTheFlag() {
+    #expect(!CodexDaemonOptOut.applies(to: ["--cd", "app", "exec", "Prompt"], promptArgumentIndex: 3))
+    #expect(!CodexDaemonOptOut.applies(to: ["-C", "app", "review", "Prompt"], promptArgumentIndex: 3))
+  }
 }
 
 @Suite(.serialized) struct CodexDaemonOptOutPreparationTests {
@@ -132,6 +148,21 @@ struct CodexDaemonOptOutTests {
     #expect(preparation.warning?.code == .managedHookDegraded)
     #expect(
       preparation.fallbackInvocation == AgentInvocation(executable: "codex", arguments: ["--no-daemon", Self.prompt]))
+  }
+
+  @Test func degradedLaunchWithADirectoryNamedLikeASubcommandStillOptsOut() async throws {
+    let root = try temporaryDirectory("codex-opt-out-degraded-cd")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let missing = root.appending(path: "missing-codex", directoryHint: .notDirectory)
+    let counter = QueryCounter()
+
+    let preparation = await prepare(
+      plan: plan(arguments: ["--cd", "app", Self.prompt]), root: root, executable: missing,
+      version: "codex-cli 0.162.1", versionQueries: counter)
+
+    #expect(await counter.count == 1)
+    #expect(preparation.warning?.code == .managedHookDegraded)
+    #expect(preparation.fallbackInvocation?.arguments == ["--cd", "app", "--no-daemon", Self.prompt])
   }
 
   @Test(arguments: ["codex-cli 0.155.0", nil] as [String?])

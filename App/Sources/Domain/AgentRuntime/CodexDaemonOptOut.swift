@@ -22,6 +22,8 @@ nonisolated enum CodexDaemonOptOut {
     "remote-control", "app", "completion", "update", "doctor", "sandbox", "debug", "apply", "a", "queue",
     "archive", "delete", "migrate-rollouts", "unarchive", "cloud", "exec-server", "features", "help",
   ]
+  /// Interactive subcommands that accept the flag; the arguments after them are their own.
+  private static let interactiveSubcommands: Set<String> = ["resume", "fork"]
 
   /// Whether `codex --version` output (`codex-cli 0.162.1`, `codex-cli 0.163.0-alpha.11`)
   /// names a release that accepts the flag.
@@ -39,14 +41,29 @@ nonisolated enum CodexDaemonOptOut {
     return (major, minor, patch) >= minimumVersion
   }
 
+  /// Top-level options that take a separate value (`codex --help`, 0.162.1). Their values can
+  /// spell a subcommand, such as `--cd app`.
+  private static let valueOptions: Set<String> = [
+    "-c", "--config", "--enable", "--disable", "--remote", "--remote-auth-token-env", "-i", "--image", "-m",
+    "--model", "--local-provider", "-p", "--profile", "-s", "--sandbox", "-C", "--cd", "--add-dir", "-a",
+    "--ask-for-approval",
+  ]
+
   /// Whether the invocation starts the interactive TUI and does not already opt out. Profile
-  /// options come before the extra arguments, so a subcommand can follow them. Option values are
-  /// not told apart from positionals; a value that spells a subcommand only skips the flag.
+  /// options come before the extra arguments, so a subcommand can follow them. Known options
+  /// consume their values. A positional that names a non-interactive subcommand skips the flag
+  /// even after an unknown option, because skipping is safe and a wrong flag stops the launch.
   static func applies(to arguments: [String], promptArgumentIndex: Int?) -> Bool {
-    let options = arguments.indices.prefix { arguments[$0] != "--" }
-      .filter { $0 != promptArgumentIndex }
-      .map { arguments[$0] }
-    return !options.contains(argument) && !options.contains(where: nonInteractiveSubcommands.contains)
+    var index = arguments.startIndex
+    while index < arguments.endIndex, arguments[index] != "--" {
+      defer { index += 1 }
+      guard index != promptArgumentIndex else { continue }
+      let current = arguments[index]
+      if current == argument || nonInteractiveSubcommands.contains(current) { return false }
+      if interactiveSubcommands.contains(current) { return true }
+      if valueOptions.contains(current), index + 1 != promptArgumentIndex { index += 1 }
+    }
+    return true
   }
 
   /// Inserts the flag ahead of the prompt positional and any `--` sentinel. The prompt stays the
