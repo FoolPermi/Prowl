@@ -680,10 +680,8 @@ struct AppFeature {
         guard let worktree = state.repositories.selectedTerminalWorktree else {
           return .none
         }
-        let rootURL = worktree.repositoryRootURL
-        let actionID = action.settingsID
-        @Shared(.repositorySettings(rootURL)) var repositorySettings
-        $repositorySettings.withLock { $0.openActionID = actionID }
+        setRepositoryOpenActionID(
+          action.settingsID, rootURL: worktree.repositoryRootURL, into: &state)
         return .none
 
       case .openActionResetToAutomatic:
@@ -694,9 +692,9 @@ struct AppFeature {
         // re-resolve and reopen unconditionally so the entry behaves like the
         // concrete app rows, where selecting always opens.
         if !state.openActionIsAutomatic {
-          let rootURL = worktree.repositoryRootURL
-          @Shared(.repositorySettings(rootURL)) var repositorySettings
-          $repositorySettings.withLock { $0.openActionID = OpenWorktreeAction.automaticSettingsID }
+          setRepositoryOpenActionID(
+            OpenWorktreeAction.automaticSettingsID, rootURL: worktree.repositoryRootURL,
+            into: &state)
         }
         @Shared(.settingsFile) var settingsFile
         state.openActionSelection = OpenWorktreeAction.fromSettingsID(
