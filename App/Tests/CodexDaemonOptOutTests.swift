@@ -77,6 +77,24 @@ struct CodexDaemonOptOutTests {
     #expect(CodexDaemonOptOut.applies(to: arguments, promptArgumentIndex: arguments.count - 1))
   }
 
+  /// Review R3-001: an existing opt-out after `resume` / `fork` must not be duplicated.
+  @Test(
+    arguments: [
+      (["resume", "--last", "--no-daemon"], nil),
+      (["fork", "--last", "--no-daemon"], nil),
+      (["--model", "gpt-5", "resume", "--last", "--no-daemon", "Prompt"], 5),
+      (["-m", "gpt-5", "fork", "--no-daemon", "--last", "Prompt"], 5),
+    ] as [([String], Int?)])
+  func anExistingOptOutAfterAnInteractiveSubcommandIsKept(arguments: [String], promptIndex: Int?) {
+    #expect(!CodexDaemonOptOut.applies(to: arguments, promptArgumentIndex: promptIndex))
+    let invocation = AgentInvocation(executable: "codex", arguments: arguments)
+    #expect(CodexDaemonOptOut.applying(to: invocation, promptArgumentIndex: promptIndex).invocation == invocation)
+  }
+
+  @Test func aPromptThatSpellsTheFlagDoesNotCountAsAnOptOut() {
+    #expect(CodexDaemonOptOut.applies(to: ["resume", "--last", "--no-daemon"], promptArgumentIndex: 2))
+  }
+
   @Test func aSubcommandAfterADirectoryOptionStillSkipsTheFlag() {
     #expect(!CodexDaemonOptOut.applies(to: ["--cd", "app", "exec", "Prompt"], promptArgumentIndex: 3))
     #expect(!CodexDaemonOptOut.applies(to: ["-C", "app", "review", "Prompt"], promptArgumentIndex: 3))

@@ -54,12 +54,15 @@ nonisolated enum CodexDaemonOptOut {
   /// consume their values. A positional that names a non-interactive subcommand skips the flag
   /// even after an unknown option, because skipping is safe and a wrong flag stops the launch.
   static func applies(to arguments: [String], promptArgumentIndex: Int?) -> Bool {
+    let options = arguments.indices.prefix { arguments[$0] != "--" }.filter { $0 != promptArgumentIndex }
+    // `resume` and `fork` accept the flag after them too, and Codex rejects it twice.
+    guard !options.contains(where: { arguments[$0] == argument }) else { return false }
     var index = arguments.startIndex
     while index < arguments.endIndex, arguments[index] != "--" {
       defer { index += 1 }
       guard index != promptArgumentIndex else { continue }
       let current = arguments[index]
-      if current == argument || nonInteractiveSubcommands.contains(current) { return false }
+      if nonInteractiveSubcommands.contains(current) { return false }
       if interactiveSubcommands.contains(current) { return true }
       if valueOptions.contains(current), index + 1 != promptArgumentIndex { index += 1 }
     }
