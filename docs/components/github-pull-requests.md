@@ -159,6 +159,20 @@ When GitHub refuses a request for its rate limit:
 
 ## Gotchas for agents
 
+- A working terminal `gh` command does not prove that Prowl can send the same
+  request: a closed rate-limit gate rejects it before launching `gh`. Start with
+  the refused request and evidence in the toolbar popover or Settings →
+  **GitHub**. A high remaining quota does not rule out a refusal: a GraphQL
+  response can carry a top-level `RATE_LIMIT` error even with HTTP 200.
+- Prowl runs the resolved `gh` executable in a non-interactive login shell and
+  explicitly sources `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`,
+  depending on the shell. It resolves the executable using the app's inherited
+  environment first, then the login shell, then the fixed paths listed above.
+  A bare `$SHELL -l -c` command, including one run with `env -i`, does not
+  reproduce this sequence or the app's environment. Shell configuration guarded
+  by an interactive-shell check can still behave differently. Compare the
+  executable path, version, host, and account before attributing a failure to
+  credentials; do not collect token values or a full environment dump.
 - "GitHub rate-limited until HH:MM" means Prowl is holding off for that host and
   API. Requests from other tools on that account can extend the limit too. Click
   the toolbar status, or open Settings → **GitHub**, to see which request GitHub
