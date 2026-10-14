@@ -135,7 +135,11 @@ overrides those variables, cannot be mapped, and caller-scoped commands fail wit
 Session logs larger than 64 MiB are not mapped. Restarting Codex in the pane resets its
 session log; its first indexed submit can establish the mapping again.
 Codex launched from an Agent Profile, or with `--no-daemon`, runs commands inside the pane
-and is not affected.
+and is not affected. For Codex 0.156 and later, Prowl adds `--no-daemon` to every
+interactive profile launch, also when it cannot prepare its managed notifier; it skips the
+flag only when the login shell or `codex --version` does not answer within one second.
+`prowl workflow read` and `deliver` accept the step token in place of a mapped pane (see
+[Workflows](workflows.md)).
 
 ## Commands
 
