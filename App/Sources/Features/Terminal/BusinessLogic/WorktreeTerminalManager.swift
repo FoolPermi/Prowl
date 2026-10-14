@@ -28,6 +28,7 @@ final class WorktreeTerminalManager {
   @ObservationIgnored private let codexConfigReadProcess: CodexConfigReadProcess
   @ObservationIgnored private let codexShellEnvironmentResolver:
     @Sendable (URL, String?) async -> CodexShellLaunchEnvironment?
+  @ObservationIgnored private let codexVersionQuery: AgentManagedHookPreparer.CodexVersionQuery
   @ObservationIgnored private let hookResourcesProvider: @MainActor () -> AgentHookResources?
   @ObservationIgnored private let forwardingRecordBaseDirectory: URL
   @ObservationIgnored private var codexForwardingRecordStore: CodexForwardingRecordStore?
@@ -60,6 +61,9 @@ final class WorktreeTerminalManager {
       @escaping @Sendable (URL, String?) async -> CodexShellLaunchEnvironment? = {
         await CodexShellLaunchEnvironmentProbe.resolve(cwd: $0, pathOverride: $1)
       },
+    codexVersionQuery: @escaping AgentManagedHookPreparer.CodexVersionQuery = {
+      await CodexVersionProbe.query(executableURL: $0)
+    },
     hookResourcesProvider: @escaping @MainActor () -> AgentHookResources? = {
       guard let url = ProwlPaths.bundledCLIURL else { return nil }
       return AgentHookResources(
@@ -85,6 +89,7 @@ final class WorktreeTerminalManager {
     self.agentDispatchStore = agentDispatchStore
     self.codexConfigReadProcess = codexConfigReadProcess
     self.codexShellEnvironmentResolver = codexShellEnvironmentResolver
+    self.codexVersionQuery = codexVersionQuery
     self.hookResourcesProvider = hookResourcesProvider
     self.forwardingRecordBaseDirectory = forwardingRecordBaseDirectory
     // A remembered size equal to the config's size means "follow the config".
@@ -162,6 +167,7 @@ final class WorktreeTerminalManager {
         resources: resources,
         codexShellEnvironment: codexShellEnvironment,
         codexConfigReadProcess: codexConfigReadProcess,
+        codexVersionQuery: codexVersionQuery,
         droidSettingsEnvironmentResolver: { cwd, pathOverride in
           await DroidSettingsEnvironmentProbe.resolve(cwd: cwd, pathOverride: pathOverride)
         },
@@ -198,10 +204,15 @@ final class WorktreeTerminalManager {
     resources: AgentHookResources?
   ) -> Result<PreparedAgentProfileLaunch, AgentProfileLaunchError> {
     let runtimeRawValue = context.request.plan.runtime.rawValue
+    // A launch without its managed hook still takes the runtime's fallback invocation.
+    let fallbackContext =
+      preparation.fallbackInvocation.map {
+        context.replacingPlan(context.request.plan.replacingInvocation($0))
+      } ?? context
     func degraded(_ message: String) -> Result<PreparedAgentProfileLaunch, AgentProfileLaunchError> {
       .success(
         PreparedAgentProfileLaunch(
-          context: context,
+          context: fallbackContext,
           warnings: [
             LifecycleCommandWarning(
               code: .managedHookDegraded,
@@ -231,7 +242,7 @@ final class WorktreeTerminalManager {
       discardPrivateFiles()
       return .success(
         PreparedAgentProfileLaunch(
-          context: context,
+          context: fallbackContext,
           warnings: preparation.warning.map { [$0] } ?? []
         )
       )
@@ -260,19 +271,7 @@ final class WorktreeTerminalManager {
       coveredEvents: capability.coveredEvents,
       forwardingRecord: privateFiles.last
     )
-    let preparedContext = FrozenAgentProfileLaunchContext(
-      request: AgentProfileLaunchRequest(
-        plan: executionPlan,
-        placement: context.request.placement,
-        workingDirectoryOverride: context.request.workingDirectoryOverride,
-        inheritanceAnchor: context.request.inheritanceAnchor,
-        title: context.request.title
-      ),
-      inheritedCWD: context.inheritedCWD,
-      anchorSurfaceID: context.anchorSurfaceID,
-      tracksFocusedAnchor: context.tracksFocusedAnchor,
-      tracksInheritedCWD: context.tracksInheritedCWD
-    )
+    let preparedContext = context.replacingPlan(executionPlan)
     return .success(
       PreparedAgentProfileLaunch(
         context: preparedContext,
@@ -1604,6 +1603,7 @@ final class WorktreeTerminalManager {
       self.agentDispatchStore = AgentDispatchStore()
       self.codexConfigReadProcess = CodexConfigReadProcess()
       self.codexShellEnvironmentResolver = { _, _ in nil }
+      self.codexVersionQuery = { _ in nil }
       self.hookResourcesProvider = { nil }
       self.forwardingRecordBaseDirectory = ProwlPaths.agentHookForwardingDirectory
       self.closeUndoStack = TerminalCloseUndoStack(timeout: .zero)
