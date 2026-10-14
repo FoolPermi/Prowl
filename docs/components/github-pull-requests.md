@@ -143,12 +143,24 @@ When GitHub refuses a request for its rate limit:
 - When the wait ends, one request goes out first. If GitHub answers it, Prowl
   resumes; if GitHub refuses again, the next, longer wait starts.
 - It never retries a refused query as smaller per-repository queries.
+- `gh` stderr counts only for commands that print no HTTP response. When the
+  response is there, Prowl reads only the status, headers, and body, so text that
+  shell startup files print cannot mark a request as refused.
 - The toolbar shows **GitHub rate-limited, retrying at HH:MM** when GraphQL on a
   host of the selected worktree's repository is held back. PR status keeps its
   last known state until then. Click the status to see each held-back host and
-  API, the request GitHub refused, its HTTP status, rate-limit headers, and
-  message. **Retry Now** sends the next request at once instead of at the retry
-  time.
+  API and why (APIs that one refusal holds back show as one entry):
+  - the request GitHub refused; for a pull request query, how many repositories
+    and branches it asked about and its size in bytes;
+  - its HTTP status, the limit (primary or secondary), and which part of the
+    answer marked it as refused (GraphQL errors with their type, the response
+    message, `gh` stderr, rate-limit headers, or the HTTP status alone);
+  - the `Retry-After` and `X-RateLimit-*` headers, plus `X-GitHub-Request-Id`,
+    `Server`, and `Via`. A server administrator can find the request in the
+    server logs by its request ID; `Via` names a proxy on the way;
+  - GitHub's message, or the start of the response body when there is none.
+
+  **Retry Now** sends the next request at once instead of at the retry time.
 - Settings → **GitHub** lists every held-back host and API with the same details
   and a **Retry Now** button.
 - Prowl logs each hold with the same details (subsystem `com.onevcat.prowl`,

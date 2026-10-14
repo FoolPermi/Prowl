@@ -18,6 +18,14 @@ nonisolated struct GithubRateLimitRequest: Equatable, Sendable {
   var scope: GithubRateLimitScope
   // The gh subcommand, such as `gh api graphql`, which names the request in diagnostics.
   var command: String
+  // The size of a GraphQL query, which tells a refusal of one large batch from a limit on the account.
+  var query: QueryShape?
+
+  struct QueryShape: Equatable, Sendable {
+    var bytes: Int
+    var repositories: Int
+    var pullRequestLookups: Int
+  }
 
   static let unscoped = GithubRateLimitRequest(
     scope: GithubRateLimitScope(host: nil, resource: .graphQL),
@@ -42,6 +50,14 @@ nonisolated struct GithubRateLimitRequest: Equatable, Sendable {
       default: .rest
       }
     scope = GithubRateLimitScope(host: host, resource: resource)
+    query = arguments.first { $0.hasPrefix("query=") }.map { argument in
+      let text = argument.dropFirst("query=".count)
+      return QueryShape(
+        bytes: text.utf8.count,
+        repositories: text.ranges(of: "repository(").count,
+        pullRequestLookups: text.ranges(of: "pullRequests(").count
+      )
+    }
   }
 
   private static func value(after flag: String, in arguments: [String]) -> String? {
@@ -63,10 +79,25 @@ nonisolated struct GithubRateLimitRequest: Equatable, Sendable {
 
 // What GitHub sent with a rate-limit answer, kept so that a block can name its cause.
 nonisolated struct GithubRateLimitEvidence: Equatable, Sendable {
+  // The part of gh's output that marked the request as refused, so that a wrong reading can be told
+  // from a real limit.
+  enum Source: String, Equatable, Sendable {
+    case graphQLError = "GraphQL errors"
+    case responseMessage = "response message"
+    case stderr = "gh stderr"
+    case headers = "rate-limit headers"
+    case status = "HTTP status"
+  }
+
   var status: Int?
-  // `Retry-After` and the `X-RateLimit-*` fields, with lowercased names.
+  var source: Source?
+  // The `type` (or `code`) of the GraphQL error that refused the request.
+  var errorType: String?
+  // `Retry-After`, the `X-RateLimit-*` fields, and the fields that trace the request to a server or
+  // a proxy, with lowercased names.
   var headers: [String: String] = [:]
-  // GitHub's own words about the limit, from the body or from gh's stderr.
+  // GitHub's own words about the limit, from the body or from gh's stderr. Without them, the start
+  // of the refused response's body.
   var message: String?
 }
 
@@ -103,8 +134,10 @@ nonisolated enum GithubRateLimitClassifier {
       ? response.fields["x-ratelimit-reset"].flatMap(TimeInterval.init).map { Date(timeIntervalSince1970: $0) }
       : nil
     let failed = !succeeded || (response.status ?? 200) >= 400
-    let bodyMessage = bodyRateLimitMessage(stdout, includeTopLevelMessage: failed)
-    let stderrMessage = succeeded ? nil : stderrRateLimitLine(stderr)
+    let bodyFinding = bodyRateLimitFinding(stdout, includeTopLevelMessage: failed)
+    // gh's stderr speaks only for commands without `--include`. Once GitHub's answer is in stdout,
+    // stderr can only repeat it or carry login-shell noise.
+    let stderrMessage = succeeded || response.status != nil ? nil : stderrRateLimitLine(stderr)
 
     let isRefusal: Bool
     switch response.status {
@@ -112,16 +145,28 @@ nonisolated enum GithubRateLimitClassifier {
       isRefusal = true
     case 403:
       // A 403 is also a permission answer; GitHub marks the rate-limit kind with these.
-      isRefusal = retryAfterField != nil || budgetExhausted || bodyMessage != nil || stderrMessage != nil
+      isRefusal = retryAfterField != nil || budgetExhausted || bodyFinding != nil || stderrMessage != nil
     default:
-      isRefusal = bodyMessage != nil || stderrMessage != nil
+      isRefusal = bodyFinding != nil || stderrMessage != nil
     }
     guard isRefusal || budgetExhausted else {
       return nil
     }
-    let message = bodyMessage ?? stderrMessage
+    let message = bodyFinding?.message ?? stderrMessage
+    let source: GithubRateLimitEvidence.Source =
+      if let bodyFinding {
+        bodyFinding.source
+      } else if stderrMessage != nil {
+        .stderr
+      } else if retryAfterField != nil || budgetExhausted {
+        .headers
+      } else {
+        .status
+      }
     let isSecondary = retryAfterField != nil || message.map(mentionsSecondaryLimit) == true
     let isPrimary = budgetExhausted || message.map(mentionsPrimaryLimit) == true
+    let refusedBody =
+      isRefusal && (response.status ?? 0) >= 400 ? response.bodyStart.flatMap { bodyQuote(stdout[$0...]) } : nil
     return GithubRateLimitSignal(
       isRefusal: isRefusal,
       limit: isPrimary && !isSecondary ? .primary : .secondary,
@@ -130,10 +175,23 @@ nonisolated enum GithubRateLimitClassifier {
       resetAt: resetAt,
       evidence: GithubRateLimitEvidence(
         status: response.status,
-        headers: response.fields.filter { $0.key == "retry-after" || $0.key.hasPrefix("x-ratelimit-") },
-        message: message.map { String($0.prefix(300)) }
+        source: source,
+        errorType: bodyFinding?.errorType,
+        headers: response.fields.filter { isEvidenceHeader($0.key) },
+        message: (message ?? refusedBody).map { String($0.prefix(300)) }
       )
     )
+  }
+
+  // The start of a refused response's body on one line, such as a proxy's HTML page.
+  private static func bodyQuote(_ body: Substring) -> String? {
+    let quote = body.prefix(4096).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    return quote.isEmpty ? nil : quote
+  }
+
+  private static func isEvidenceHeader(_ name: String) -> Bool {
+    name == "retry-after" || name.hasPrefix("x-ratelimit-") || name == "x-github-request-id"
+      || name == "server" || name == "via"
   }
 
   // The HTTP status gh printed with `--include`, which shows that GitHub itself answered.
@@ -153,6 +211,8 @@ nonisolated enum GithubRateLimitClassifier {
   private struct ResponseHead {
     var status: Int?
     var fields: [String: String] = [:]
+    // Where the body starts, after the header block.
+    var bodyStart: String.Index?
   }
 
   // The status line may follow login-shell noise, so it is searched for rather than assumed first.
@@ -168,7 +228,10 @@ nonisolated enum GithubRateLimitClassifier {
         inHeaders = true
         continue
       }
-      guard !trimmed.isEmpty, let colon = trimmed.firstIndex(of: ":") else { break }
+      guard !trimmed.isEmpty, let colon = trimmed.firstIndex(of: ":") else {
+        head.bodyStart = line.startIndex
+        break
+      }
       let name = trimmed[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
       let value = trimmed[trimmed.index(after: colon)...].trimmingCharacters(in: .whitespaces)
       head.fields[name] = value
@@ -176,19 +239,30 @@ nonisolated enum GithubRateLimitClassifier {
     return head
   }
 
+  private struct BodyFinding {
+    var source: GithubRateLimitEvidence.Source
+    var errorType: String?
+    var message: String
+  }
+
   // Only the top-level `errors` array, and on a failed response the top-level `message`, carry
   // GitHub's verdict. Payload text such as a pull request titled "Handle rate limits" never counts.
-  private static func bodyRateLimitMessage(_ stdout: String, includeTopLevelMessage: Bool) -> String? {
+  private static func bodyRateLimitFinding(_ stdout: String, includeTopLevelMessage: Bool) -> BodyFinding? {
     for span in GithubCLIOutput.balancedJSONSpans(in: stdout) {
       guard let object = try? JSONSerialization.jsonObject(with: Data(span.utf8)) as? [String: Any] else {
         continue
       }
       if let errors = object["errors"] as? [[String: Any]], let error = errors.first(where: isRateLimitError) {
+        let errorType = (error["type"] as? String) ?? (error["code"] as? String)
         let message = error["message"] as? String ?? ""
-        return message.isEmpty ? (error["type"] as? String ?? "RATE_LIMITED") : message
+        return BodyFinding(
+          source: .graphQLError,
+          errorType: errorType,
+          message: message.isEmpty ? (errorType ?? "RATE_LIMITED") : message
+        )
       }
       if includeTopLevelMessage, let message = object["message"] as? String, mentionsRateLimit(message) {
-        return message
+        return BodyFinding(source: .responseMessage, message: message)
       }
     }
     return nil
@@ -230,11 +304,66 @@ nonisolated struct GithubRateLimitCause: Equatable, Sendable {
   var evidence: GithubRateLimitEvidence
 }
 
+nonisolated extension GithubRateLimitCause {
+  // A plain account of the refusal, kept in English like the gh output it quotes.
+  var summary: String {
+    var requestLine = request.command
+    if let query = request.query {
+      requestLine +=
+        ": \(query.repositories) repositories, \(query.pullRequestLookups) branches, \(query.bytes)-byte query"
+    }
+    var verdict = evidence.status.map { "HTTP \($0)" } ?? "no HTTP status"
+    verdict += ", \(limit == .primary ? "primary" : "secondary") limit"
+    if let source = evidence.source {
+      verdict += ", from \(source.rawValue)"
+      if let errorType = evidence.errorType {
+        verdict += " (\(errorType))"
+      }
+    }
+    var lines = [requestLine, verdict]
+    for (name, value) in evidence.headers.sorted(by: { $0.key < $1.key }) {
+      lines.append("\(name): \(value)")
+    }
+    if let message = evidence.message {
+      lines.append(message)
+    }
+    return lines.joined(separator: "\n")
+  }
+}
+
 // A scope that the gate holds back, with the time it sends the scope's next request.
 nonisolated struct GithubRateLimitBlock: Equatable, Sendable {
   var scope: GithubRateLimitScope
   var retryAt: Date
   var cause: GithubRateLimitCause
+}
+
+// The blocks that one refusal set, shown as one entry: a secondary limit holds back every API of
+// its host with the same cause and retry time.
+nonisolated struct GithubRateLimitBlockGroup: Equatable, Sendable, Identifiable {
+  var host: String?
+  var resources: [GithubAPIResource]
+  var retryAt: Date
+  var cause: GithubRateLimitCause
+
+  var id: GithubRateLimitScope {
+    GithubRateLimitScope(host: host, resource: resources[0])
+  }
+
+  static func grouping(_ blocks: [GithubRateLimitBlock]) -> [Self] {
+    var groups: [Self] = []
+    for block in blocks {
+      if let index = groups.firstIndex(where: {
+        $0.host == block.scope.host && $0.retryAt == block.retryAt && $0.cause == block.cause
+      }) {
+        groups[index].resources.append(block.scope.resource)
+      } else {
+        groups.append(
+          Self(host: block.scope.host, resources: [block.scope.resource], retryAt: block.retryAt, cause: block.cause))
+      }
+    }
+    return groups
+  }
 }
 
 // The blocks that keep a repository's pull request status from refreshing. Only a GraphQL block on
@@ -532,13 +661,8 @@ actor GithubRateLimitGate {
   ) -> String {
     let host = cause.request.scope.host ?? "default host"
     let resources = heldScopes.map(\.resource.rawValue).joined(separator: "+")
-    let status = cause.evidence.status.map { "HTTP \($0)" } ?? "no HTTP status"
-    let headers = cause.evidence.headers.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
-    let message = cause.evidence.message ?? "-"
-    return """
-      Holding back \(host) \(resources) until \(until.formatted(.iso8601)): \(cause.request.command) got \(status), \
-      \(cause.limit) limit, headers [\(headers.joined(separator: ", "))], message: \(message)
-      """
+    let account = cause.summary.split(separator: "\n").joined(separator: "; ")
+    return "Holding back \(host) \(resources) until \(until.formatted(.iso8601)): \(account)"
   }
 }
 

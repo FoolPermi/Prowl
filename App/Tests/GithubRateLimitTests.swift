@@ -28,6 +28,8 @@ struct GithubRateLimitClassifierTests {
           limit: .primary,
           evidence: GithubRateLimitEvidence(
             status: 200,
+            source: .graphQLError,
+            errorType: "RATE_LIMIT",
             headers: ["x-ratelimit-remaining": "4979"],
             message: "API rate limit already exceeded for user ID 1."
           )
@@ -57,6 +59,7 @@ struct GithubRateLimitClassifierTests {
           retryAfter: .seconds(120),
           evidence: GithubRateLimitEvidence(
             status: 403,
+            source: .responseMessage,
             headers: ["retry-after": "120"],
             message: "You have exceeded a secondary rate limit."
           )
@@ -155,7 +158,70 @@ struct GithubRateLimitClassifierTests {
     #expect(signal?.limit == .primary)
     #expect(
       signal?.evidence
-        == GithubRateLimitEvidence(message: "GraphQL: API rate limit exceeded for user ID 1. (rateLimit)"))
+        == GithubRateLimitEvidence(
+          source: .stderr,
+          message: "GraphQL: API rate limit exceeded for user ID 1. (rateLimit)"
+        ))
+  }
+
+  // Login-shell noise, such as a tool that hit api.github.com's limit while the shell started, must
+  // not turn GitHub's own answer into a refusal.
+  @Test func stderrDoesNotSpeakOnceGitHubAnswered() {
+    let stdout = """
+      HTTP/2.0 200 OK
+      X-Ratelimit-Remaining: 9994
+
+      {"data":{"r0":null},"errors":[{"type":"NOT_FOUND","path":["r0"],"message":"Could not resolve to a Repository."}]}
+      """
+    let stderr = "mise WARN  GitHub API rate limit exceeded\ngh: Could not resolve to a Repository."
+    #expect(GithubRateLimitClassifier.classify(stdout: stdout, stderr: stderr, succeeded: false) == nil)
+  }
+
+  @Test func refusalKeepsTheHeadersThatTraceIt() {
+    let stdout = """
+      HTTP/2.0 403 Forbidden
+      Content-Type: application/json; charset=utf-8
+      Retry-After: 60
+      Server: GitHub.com
+      Via: 1.1 proxy.example
+      X-GitHub-Request-Id: ABCD:1234
+
+      {"message":"You have exceeded a secondary rate limit."}
+      """
+    let signal = GithubRateLimitClassifier.classify(stdout: stdout, stderr: "", succeeded: false)
+    #expect(
+      signal?.evidence.headers
+        == [
+          "retry-after": "60", "server": "GitHub.com", "via": "1.1 proxy.example", "x-github-request-id": "ABCD:1234",
+        ]
+    )
+  }
+
+  @Test func refusalWithoutAMessageQuotesTheBody() {
+    let stdout = """
+      HTTP/1.1 429 Too Many Requests
+      Content-Type: text/html
+
+      <html><body>
+        <h1>Request rejected by the proxy</h1>
+      </body></html>
+      """
+    let signal = GithubRateLimitClassifier.classify(stdout: stdout, stderr: "", succeeded: false)
+    #expect(signal?.evidence.source == .status)
+    #expect(signal?.evidence.message == "<html><body> <h1>Request rejected by the proxy</h1> </body></html>")
+  }
+
+  @Test func retryAfterAloneMarksA403AsARefusal() {
+    let stdout = """
+      HTTP/2.0 403 Forbidden
+      Retry-After: 30
+
+      {"message":"Forbidden"}
+      """
+    let signal = GithubRateLimitClassifier.classify(stdout: stdout, stderr: "", succeeded: false)
+    #expect(signal?.isRefusal == true)
+    #expect(signal?.evidence.source == .headers)
+    #expect(signal?.evidence.message == #"{"message":"Forbidden"}"#)
   }
 }
 
@@ -180,6 +246,29 @@ struct GithubRateLimitRequestTests {
   @Test func repositoryWithoutHostLeavesTheHostToGh() {
     let request = GithubRateLimitRequest(arguments: ["pr", "close", "7", "--repo", "octo/repo"])
     #expect(request.scope == GithubRateLimitScope(host: nil, resource: .graphQL))
+  }
+
+  @Test func batchedQueryRecordsItsSize() {
+    let query = """
+      query {
+        r0: repository(owner: "octo", name: "one") {
+          r0_b0: pullRequests(first: 5) { nodes { number } }
+          r0_b1: pullRequests(first: 5) { nodes { number } }
+        }
+        r1: repository(owner: "octo", name: "two") {
+          r1_b0: pullRequests(first: 5) { nodes { number } }
+        }
+      }
+      """
+    let request = GithubRateLimitRequest(
+      arguments: ["api", "graphql", "--include", "--hostname", "ghe.example", "-f", "query=\(query)"])
+    #expect(
+      request.query
+        == GithubRateLimitRequest.QueryShape(bytes: query.utf8.count, repositories: 2, pullRequestLookups: 3))
+  }
+
+  @Test func commandWithoutAQueryHasNoQuerySize() {
+    #expect(GithubRateLimitRequest(arguments: ["pr", "merge", "7", "--squash"]).query == nil)
   }
 
   @Test func authStatusForAHostSpendsTheRESTBudget() {
@@ -209,6 +298,56 @@ struct GithubRateLimitStatusTests {
     #expect(
       GithubRateLimitStatus(blocks: [GithubRateLimitBlockFixture.rest(host: "github.com")], hosts: ["github.com"])
         == nil)
+  }
+}
+
+struct GithubRateLimitBlockGroupTests {
+  @Test func lanesHeldBackByOneRefusalShowAsOneEntry() {
+    let retryAt = Date(timeIntervalSince1970: 60)
+    let graphQL = GithubRateLimitBlockFixture.graphQL(host: "ghe.example", retryAt: retryAt)
+    var rest = GithubRateLimitBlockFixture.rest(host: "ghe.example", retryAt: retryAt)
+    rest.cause = graphQL.cause
+    let other = GithubRateLimitBlockFixture.graphQL(host: "github.com", retryAt: retryAt)
+
+    #expect(
+      GithubRateLimitBlockGroup.grouping([graphQL, rest, other]) == [
+        GithubRateLimitBlockGroup(
+          host: "ghe.example", resources: [.graphQL, .rest], retryAt: retryAt, cause: graphQL.cause),
+        GithubRateLimitBlockGroup(host: "github.com", resources: [.graphQL], retryAt: retryAt, cause: other.cause),
+      ])
+  }
+
+  @Test func lanesWithTheirOwnRefusalsStaySeparate() {
+    let graphQL = GithubRateLimitBlockFixture.graphQL(host: "ghe.example", retryAt: Date(timeIntervalSince1970: 60))
+    let rest = GithubRateLimitBlockFixture.rest(host: "ghe.example", retryAt: Date(timeIntervalSince1970: 90))
+    #expect(GithubRateLimitBlockGroup.grouping([graphQL, rest]).map(\.resources) == [[.graphQL], [.rest]])
+  }
+}
+
+struct GithubRateLimitCauseSummaryTests {
+  @Test func summaryNamesTheRequestAndEverythingGitHubSent() {
+    var request = GithubRateLimitRequest(
+      scope: GithubRateLimitScope(host: "ghe.example", resource: .graphQL), command: "gh api graphql")
+    request.query = GithubRateLimitRequest.QueryShape(bytes: 18_000, repositories: 15, pullRequestLookups: 40)
+    let cause = GithubRateLimitCause(
+      request: request,
+      limit: .secondary,
+      evidence: GithubRateLimitEvidence(
+        status: 200,
+        source: .graphQLError,
+        errorType: "RATE_LIMITED",
+        headers: ["x-github-request-id": "ABCD:1234", "x-ratelimit-remaining": "9994"],
+        message: "You have exceeded a secondary rate limit."
+      )
+    )
+    #expect(
+      cause.summary == """
+        gh api graphql: 15 repositories, 40 branches, 18000-byte query
+        HTTP 200, secondary limit, from GraphQL errors (RATE_LIMITED)
+        x-github-request-id: ABCD:1234
+        x-ratelimit-remaining: 9994
+        You have exceeded a secondary rate limit.
+        """)
   }
 }
 
@@ -638,6 +777,33 @@ struct GithubRateLimitedClientTests {
     }
 
     #expect(launches.value == 2)
+  }
+
+  @Test func refusedBatchNamesItsSizeInTheBlock() async throws {
+    let gate = GithubRateLimitGate(now: { Date(timeIntervalSince1970: 1_000_000) }, jitter: { 0 })
+    let client = GithubCLIClient.live(
+      shell: fakeGh(launches: LockIsolated(0)) { _ in
+        throw ShellClientError(
+          command: "gh api graphql",
+          stdout: GithubRateLimitClassifierTests.graphQLRefusal,
+          stderr: "",
+          exitCode: 1
+        )
+      },
+      rateLimitGate: gate
+    )
+    let requests = [
+      CrossRepoPullRequestRequest(owner: "octo", repo: "one", branches: ["main", "feature"]),
+      CrossRepoPullRequestRequest(owner: "octo", repo: "two", branches: ["main"]),
+    ]
+    await #expect(throws: GithubCLIError.self) {
+      _ = try await client.batchPullRequestsAcrossRepositories("ghe.example", requests, nil)
+    }
+
+    var blocks = await gate.blocks().makeAsyncIterator()
+    let query = await blocks.next()?.first?.cause.request.query
+    #expect(query?.repositories == 2)
+    #expect(query?.pullRequestLookups == 3)
   }
 
   @Test func versionCheckRunsWhileRateLimited() async throws {

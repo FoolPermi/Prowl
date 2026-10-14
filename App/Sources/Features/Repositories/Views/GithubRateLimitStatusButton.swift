@@ -57,13 +57,14 @@ struct GithubRateLimitBlockList: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      ForEach(blocks, id: \.scope) { block in
-        let host = block.scope.host ?? String(localized: "Default host")
-        let retryTime = block.retryAt.formatted(date: .omitted, time: .shortened)
+      ForEach(GithubRateLimitBlockGroup.grouping(blocks)) { group in
+        let host = group.host ?? String(localized: "Default host")
+        let resources = group.resources.map(\.displayName).joined(separator: " + ")
+        let retryTime = group.retryAt.formatted(date: .omitted, time: .shortened)
         VStack(alignment: .leading, spacing: 2) {
-          Text("\(host) · \(block.scope.resource.displayName) · until \(retryTime)")
+          Text("\(host) · \(resources) · until \(retryTime)")
             .font(.callout.weight(.medium))
-          Text(block.cause.summary)
+          Text(group.cause.summary)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -80,21 +81,5 @@ extension GithubAPIResource {
     case .graphQL: "GraphQL"
     case .rest: "REST"
     }
-  }
-}
-
-extension GithubRateLimitCause {
-  // A plain account of the refusal, kept in English like the gh output it quotes.
-  var summary: String {
-    var lines = [request.command]
-    let status = evidence.status.map { "HTTP \($0)" } ?? "no HTTP status"
-    lines.append("\(status), \(limit == .primary ? "primary" : "secondary") limit")
-    for (name, value) in evidence.headers.sorted(by: { $0.key < $1.key }) {
-      lines.append("\(name): \(value)")
-    }
-    if let message = evidence.message {
-      lines.append(message)
-    }
-    return lines.joined(separator: "\n")
   }
 }
