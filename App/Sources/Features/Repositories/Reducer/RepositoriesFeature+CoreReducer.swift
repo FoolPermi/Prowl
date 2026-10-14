@@ -57,8 +57,8 @@ extension RepositoriesFeature {
       state.snapshotPersistencePhase = .restoring
       let githubCLI = githubCLI
       let observeRateLimit = Effect<Action>.run { send in
-        for await retryAt in await githubCLI.rateLimitRetryTimes() {
-          await send(.githubIntegration(.rateLimitRetryTimeChanged(retryAt)))
+        for await blocks in await githubCLI.rateLimitBlocks() {
+          await send(.githubIntegration(.rateLimitBlocksChanged(blocks)))
         }
       }
       return .merge(
