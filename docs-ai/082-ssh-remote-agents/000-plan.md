@@ -3,9 +3,9 @@
 | | |
 | --- | --- |
 | **Status** | Planned |
-| **Anchor date** | 2026-10-16 |
-| **Primary PRs** | (fill in as they merge) |
-| **Related** | [002-spike-findings.md](002-spike-findings.md), [079-program-status-osc-7501](../079-program-status-osc-7501/000-plan.md), [068-agent-state-providers](../068-agent-state-providers/architecture.md), [064-agent-completion-signals](../064-agent-completion-signals/000-plan.md), [067-remote-mirror](../067-remote-mirror/000-plan.md), `docs/components/agent-detection.md` |
+| **Anchor date** | 2026-10-16 (revised 2026-10-17 after review round 1) |
+| **Primary PRs** | #921 (this plan); implementation PRs per the slice table |
+| **Related** | [002-spike-findings.md](002-spike-findings.md), [079-program-status-osc-7501](../079-program-status-osc-7501/000-plan.md), [068-agent-state-providers](../068-agent-state-providers/architecture.md), [064-agent-completion-signals](../064-agent-completion-signals/000-plan.md), [069-undo-close-terminal](../069-undo-close-terminal/000-plan.md), [067-remote-mirror](../067-remote-mirror/000-plan.md), `docs/components/agent-detection.md` |
 
 ## Background
 
@@ -29,254 +29,351 @@ transcripts, pid registries), and (3) session survival when the local side disco
 
 ## Goals
 
-The work is three independent layers. Each layer ships alone and adds value alone.
+Three layers, delivered in order. Each adds user value when it lands, but they depend on
+each other: L1 reuses the L0 connection layer, and L2 builds on the L1 folder model. L0 also
+works in ordinary local-repository panes.
 
 | Layer | Value | Remote requirement |
 | --- | --- | --- |
-| L0 — SSH-transparent detection | A manual `ssh host` + agent in any Prowl pane shows in Active Agents with exact identity and live state | None (no install, no file writes, no rc change) |
+| L0 — SSH-transparent detection | A manual `ssh host` + agent in any Prowl pane shows in Active Agents with live state and the host | None installed; correlation rides distribution-default `SendEnv`/`AcceptEnv LC_*` |
 | L1 — Remote folders | Remote repositories and worktrees in the sidebar; tabs, splits, scripts and Profile launches open on the host | `git`, `/bin/bash`, `sh` |
-| L2 — Persistent sessions | Remote tabs attach to Prowl-managed tmux automatically; sessions survive tab close, app quit, Mac sleep and network loss | `tmux` (default on when present) |
+| L2 — Persistent sessions | Remote panes attach to Prowl-managed tmux automatically; sessions survive tab close, app quit, Mac sleep and network loss | `tmux` (default on when present) |
 
 ### Non-goals
 
 - L3, a resident remote observer (observation and notifications while Prowl is not
-  running, sessions outside Prowl's tmux that no Prowl pane shows, remote file evidence). Decided 2026-10-16: not planned. If a need appears, it must be a stdio-only
-  observer (`ssh host prowl serve --stdio`), never HTTP with pairing.
+  running, sessions outside Prowl's tmux that no Prowl pane shows, remote file evidence).
+  Decided 2026-10-16: not planned. If a need appears, it must be a stdio-only observer
+  (`ssh host prowl serve --stdio`), never HTTP with pairing.
 - A custom PTY stream protocol or a new terminal component. SSH is the PTY transport; the
   local terminal stays a Ghostty surface.
 - Agent protocol clients (Codex app-server, ACP).
-- Remote managed hooks and workflow delivery from remote panes. The `ssh -R` socket channel
-  works (002), but the remote side needs a Prowl CLI binary. Later work.
+- Remote managed hooks and workflow participation from remote panes. The `ssh -R` socket
+  channel works (002), but the remote side needs a Prowl CLI binary. Later work.
 - Remote file-based evidence: session ids, transcripts, `agents read` results, Codex daemon
   child work.
-- mosh, Eternal Terminal, nested ssh, `docker exec` chains.
-- Remote diff window, workspaces, Finder/editor actions, clone to remote.
+- Exact identity for an agent that emits no OSC 7501 when no correlation channel exists.
+- mosh, Eternal Terminal, nested ssh, `docker exec` chains, nested tmux.
+- Remote diff window, workspaces, Finder, clone to remote.
 
 ## Design / Approach
 
-### L0 — SSH-transparent detection (detailed)
+### Shared contracts
 
-**1. Correlation key.** Each pane exports `LC_PROWL_PANE=<pane UUID>` next to `PROWL_PANE_ID`
-(`launchEnvironment` in `App/Sources/Infrastructure/Ghostty/GhosttySurfaceView.swift`). The
-`LC_` prefix rides the default `SendEnv LANG LC_*` (macOS client) and `AcceptEnv LANG LC_*`
-(macOS and Debian sshd), so a hand-typed `ssh host` carries it with no configuration. The
-value is as public as `PROWL_PANE_ID`. iTerm2's `LC_TERMINAL` uses the same channel.
+These land first; later slices rely on them.
 
-**2. Remote pane trigger.** When the local probe's foreground job is `ssh`, the pane becomes
-a remote candidate. Prowl parses the destination and connection options (`-p`, `-l`, `-i`,
-`-J`, `-F`, `-o`) from the local `ssh` argv; it ignores the remote command.
+**C1 — Host identity.** Three separate things:
 
-**3. Side channel.** One Prowl-owned connection per destination:
-`ssh -o ControlMaster=auto -o ControlPath=<short path> -o ControlPersist=<n> -o BatchMode=yes
-<options> <destination> sh -s`. It reuses the user's `~/.ssh/config`, keys and the
-`SSH_AUTH_SOCK` that launchd gives the app. ControlPath must stay below 104 bytes. When the
-connection cannot open (unknown host key, password or 2FA), the host is "unprobed" and
-retries with backoff.
+| Concept | Content | Use |
+| --- | --- | --- |
+| `HostProfile` | Persistent UUID, display alias, connection recipe (destination and supported options) | Persisted repositories, sessions, settings keys |
+| `ConnectionKey` | Effective user, hostname, port, jump chain and config context, from `ssh -G` | Side-channel sharing, process scope, cache keys |
+| Alias | What the user typed | Display only |
 
-**4. Probe.** A bundled POSIX `sh` script is piped through `sh -s` on every run; nothing is
-installed. One run per host per tick serves every pane on that host. It prints one record per
-line (contract and tested script in 002):
+Editing an alias never redirects a persisted repository; `-l alice` and `-l bob` on one host
+are different connection keys. The private ControlPath is a short hash of the connection key
+(below 104 bytes).
 
-| Record | Meaning |
-| --- | --- |
-| `T <epoch> <uname>` | header |
-| `S <pane> <anchor pid> <tty> <tpgid>` | an SSH session: anchor = process whose parent is `sshd`/`sshd-session:` and that has a tty |
-| `P <pane> <pid> <ppid> <pgid> <comm> <args…>` | a member of the tty's foreground process group |
-| `E <pane> <pid> <elapsed s> <cwd>` | elapsed time (clock-skew free) and cwd of that member |
-| `M <pane> tmux <socket> <pane id> <pane tty> <path>` | foreground is a tmux client: the pane it shows (by client tty) |
-| `C-BEGIN … C-END` | optional `tmux capture-pane` text of that pane |
+**C2 — Typed process reference.** `ProcessRef` is `.local(pid)` or
+`.remote(connectionKey, bootID, pid, startToken)`. It replaces naked pids in `ForegroundJob`,
+`IdentifiedAgentProcess` (`AgentClassifier.swift`), `PaneAgentState` (including
+`retainedSession`, which matches a bare pid today), `AgentProcessGeneration`
+(`AgentSignal.swift`, which compares `pid` and `startedAt`), caches and signal evidence.
+Functions that read local OS state take a local-only type, so a remote reference cannot
+compile into them: `processGeneration`, `processIsLiveAncestor`, `AgentSessionResolver`
+(fd scans, cwd and transcript scans, `AgentPidArtifacts.swift`, Codex `daemon.pid`),
+`CodexLogProvider`, `ClaudeRuntimeProvider`, Profile config roots,
+`WorktreeTerminalManager.currentAgentEvidence`, CLI caller attribution and the
+`agents read` snapshot path in `ProwlApp.swift`. Remote cwd stays a typed remote path, never
+a local file URL. When the origin or generation of a pane changes, Prowl retires the
+retained session, launch observation, provider state and Profile metadata of that pane.
 
-Pane id source: Linux reads the anchor's `/proc/<pid>/environ`. macOS hides the environment
-of platform binaries (the `/bin/zsh` login shell), so it reads the foreground members'
-environment; agents are not platform binaries. Prowl caches anchor → pane once learned.
+**C3 — Remote snapshot.** Every probe result carries connection epoch, sequence number,
+acquisition interval (local monotonic start and end), completeness, and outcome (`complete`,
+`partial`, `failed`, `timedOut`). Rules:
 
-**5. Identity.** Probe records become a `ForegroundJob` with a new `origin` (`.local` or
-`.remote(hostKey)`) and go to the unchanged `AgentClassifier`. All 17 agents get exact
-identity. Classification uses argv (Claude's native binary has its version as `comm`).
+- Presence counts each sequence once, not once per pane tick.
+- Only a complete, fresh snapshot proves absence.
+- Transport loss or staleness beyond a deadline shows "status unavailable · last seen
+  <time>", never Idle, Done or exit.
+- A response that arrives after its subscription is retired (local `ssh` exited, pane
+  closed) is dropped.
 
-**6. Origin isolation (required).** A remote pid must never reach code that reads local OS
-state. Each seam checks `origin == .local`: `processGeneration` and `processIsLiveAncestor`,
-`AgentSessionResolver` (fd scans, cwd/transcript scans, pid registries in
-`AgentPidArtifacts.swift`, Codex `daemon.pid`), `AgentDetectionCoordinator` providers
-(`CodexLogProvider`, `ClaudeRuntimeProvider`), Profile config roots,
-`WorktreeTerminalManager.currentAgentEvidence`, CLI caller attribution, and the
-`agents read` snapshot path in `ProwlApp.swift`. A remote generation is
-`(hostKey, pid, startedAt = localNow − elapsed − 1 s)`.
+**C4 — Connection owner.** One actor per connection key owns the side channel
+(`ssh -o ControlMaster=auto -o ControlPath=<hash> -o ControlPersist=<n> -o BatchMode=yes`,
+using `~/.ssh/config`, keys and launchd's `SSH_AUTH_SOCK`). Panes and folders subscribe; the
+owner runs at most one probe at a time and publishes the latest snapshot. Every command has a
+whole-command deadline, cancellation and process reaping, bounded output and jittered
+backoff. Detection and git operations use separate lanes, so a stalled git command cannot
+delay detection. Networking stays off the main actor.
 
-**7. State.** Non-tmux: the screen rules read the local surface and OSC 7501 arrives through
-SSH; both paths stay unchanged. The OSC fence (`ProgramStatusEvidence`) uses the derived
-`startedAt`. tmux: no OSC 7501 (002); the detector reads the `C` capture text in place of
-`readActiveText`.
+**C5 — Structured commands.** Remote work is an executable, argv, cwd and environment,
+converted to POSIX shell text at one quoting boundary. Only the probe and `wt` run as
+explicit scripts (`sh -s`, `bash -s` with the script on stdin).
 
-**8. Cadence.** The remote prober is async and plugs into `probeForegroundJob`
-(`WorktreeTerminalState+ProgramStatus.swift`). Per host: 1 s while a remote agent is active,
-2 s otherwise; results are cached so the 300 ms pane tick does not cause extra runs.
+**C6 — Probe wire format.** The production probe emits framed records with escaped fields and
+byte limits. The spike format in 002 is evidence, not a parser specification. Records carry
+the boot id and a native start token (Linux: `/proc/sys/kernel/random/boot_id` and start
+ticks; macOS: `kern.boottime` and `lstart`), elapsed time, cwd, the tmux mapping and
+`pane_in_mode`, and capture text when requested.
 
-**9. Release.** The agent leaves the foreground (including `kill -9`) → miss → release. OSC
-`clear` and local `ssh` exit also release.
+### L0 — SSH-transparent detection
 
-**10. Degraded mode (unprobed host).** Only verified producers (Claude Code, Pi, Oh My Pi)
-show, identified by OSC `app`, with heuristic confidence. Screen-fingerprint identity is out
-of scope.
+1. **Correlation.**
+   - Primary key: each pane exports `LC_PROWL_PANE=<pane UUID>` next to `PROWL_PANE_ID`
+     (`launchEnvironment` in `App/Sources/Infrastructure/Ghostty/GhosttySurfaceView.swift`).
+     It rides `SendEnv`/`AcceptEnv LC_*`. These are distribution defaults (macOS client and
+     server, Debian), not an OpenSSH guarantee.
+   - Secondary key: the `SSH_CONNECTION` client port of the remote session, matched against the
+     local TCP port of the pane's own `ssh` process. It works when that `ssh` owns its TCP
+     socket (no ControlMaster client, no ProxyJump). It disambiguates and covers hosts without
+     `AcceptEnv`. Unverified; see Open questions.
+   - A key binds only to a current candidate on the same connection key. Anchor caches are
+     scoped by connection epoch and anchor generation, not by pid.
+   - Correlation state per pane: `correlated`, `ambiguous` (for example two ssh jobs in one pane
+     with one UUID), `unmapped`, `probeUnavailable`, `unsupported`. Prowl never picks an
+     arbitrary anchor.
+2. **Trigger and argv.** A foreground `ssh` makes the pane a remote candidate. Prowl parses the
+   local `ssh` argv with an explicit supported grammar and resolves it with `ssh -G`. The side
+   channel never replays forwarding, session or command options (`-L`, `-R`, `-D`, `-N`, `-f`,
+   `-t`, `-W`, `RemoteCommand`, `LocalForward` …). Unsupported argv gives `unsupported`.
+3. **Probe.** The C6 script runs over the C4 owner. Anchor: a process with a tty whose parent is
+   `sshd` or `sshd-session:`. Pane id source: Linux reads the anchor's environ; macOS hides the
+   environment of platform binaries (the `/bin/zsh` login shell), so it reads the foreground
+   members' environment.
+4. **Identity.** Probe records become a `ForegroundJob` of remote `ProcessRef`s and go to the
+   unchanged `AgentClassifier`, using argv (Claude's native binary has its version as `comm`).
+5. **Generation and OSC fence.** Generation equality is `(connectionKey, bootID, pid,
+   startToken)`, never recomputed from receive time. The OSC fence for a remote agent is an
+   attachment epoch: records count when they arrive after the pane's previous generation was
+   retired, or after the local `ssh` started, whichever is later. Reports sent between process
+   start and the first probe stay eligible. A predecessor that the probe never saw can leak at
+   most its last record until the successor's first report replaces the root record.
+6. **State.** Without tmux: local screen rules and OSC 7501 through SSH. Inside any tmux (the
+   user's own or Prowl's): capture text is the state source, because copy mode, choosers,
+   splits and other clients break "local screen = agent screen", and tmux drops OSC 7501
+   (002). A local screen change triggers an immediate capture to keep latency low.
+7. **Cadence.** Subscription driven. Prowl probes at once when a new foreground `ssh` appears,
+   on input or screen-change wakes (debounced), and when an unbound pane receives OSC 7501.
+   Steady cadence: 1 s while a remote agent is active, 2–5 s otherwise; separate warm and cold
+   budgets.
+8. **Release.** Only absence in a complete fresh snapshot, counted once per sequence, or local
+   `ssh` exit releases the agent. OSC `clear` withdraws OSC evidence; the agent stays and state
+   falls back to the screen (as 079 does locally).
+9. **Degraded OSC-only binding.** For `unmapped` and `probeUnavailable` panes, a verified
+   producer's root record (`app` = claude-code, pi, omp) binds to the current local `ssh`
+   generation. Prowl never invents a remote pid. Confidence is heuristic. Without a probe, a
+   silent `kill -9` is only noticed when `ssh` exits or the stale deadline passes. "Verified"
+   means the producer's protocol behaviour was checked, not that a payload is authentic.
+10. **UX.**
+    - A persistent `user@host` label on remote panes, tabs and Active Agents rows.
+    - Connection health separate from agent state ("Working · last seen 12 s ago", "Status
+      unavailable"), with a reason-specific action (retry, accept host key, why unmapped).
+    - A clear marker when ssh ends and the pane returns to a local shell.
+    - `prowl agents --json` carries host, correlation state and freshness.
+    - Update `docs/components/agent-detection.md` and `docs/components/cli.md`.
+11. **Admission.** A pane whose agent has a remote origin, including a manual `ssh` from a local
+    repository, cannot be a workflow participant or a dispatch target that needs a receipt. The
+    refusal is a clear error at the admission point, not only in the UI.
 
-**11. Surfaces.** Active Agents and `prowl agents --json` carry the host. Update
-`docs/components/agent-detection.md` and `docs/components/cli.md`.
-
-### L1 — Remote folders (plan)
+### L1 — Remote folders
 
 L1 first makes "where the repository lives" an explicit dimension with one value (local),
 then adds the second value (remote). Feature code asks capabilities, never the location.
 
-**Architecture.**
-
-- **Location dimension.** `RepositoryLocation` is `.local(URL)` or `.remote(host, path)`,
-  orthogonal to `Repository.Kind` (git/plain). A `Worktree` shares its repository's host.
-  Remote identity is `ssh://<host alias>/<canonical path>`, canonicalized on the host
-  (`cd <p> && pwd -P`).
+- **Location dimension.** `RepositoryLocation` is `.local(URL)` or
+  `.remote(hostProfileID, canonicalPath)`, orthogonal to `Repository.Kind` (git/plain). The
+  path is canonicalized on the host (`cd <p> && pwd -P`) and stored losslessly (spaces, `%`,
+  `#`, Unicode). A `Worktree` shares its repository's host.
 - **Compiler-enforced inventory.** `Repository.rootURL` and `Worktree.workingDirectory`
-  (about 145 and 78 uses today) are replaced by `location` plus `localURL: URL?`, which is nil
-  for a remote location. Each call site must then pick one: go through the host (below), sit
-  behind a capability, or unwrap because it is local by construction (for example a path from
-  `NSOpenPanel`). New code cannot assume a local path by accident.
-- **Host execution boundary.** `RepositoryHost`, bound to a location, offers only command
-  primitives: `run(command, in:)`, `runBundledScript(_:arguments:in:)` (local exec of `wt`;
-  remote `bash -s` with the script on stdin) and `observeChanges(_:)` (FSEvents locally,
-  polling remotely). `GitClient` gets its execution from the host instead of a global
-  `ShellClient` and ad-hoc `GitClient()` instances. In-scope features use commands only, no
-  direct file reads: reading `.git/HEAD`, `index.lock` or the index header becomes a git
-  command, so the remote side needs no file-system API.
-- **Capability resolution.** `Repository.Capabilities` changes from two fixed presets to one
-  function `resolve(kind:location:)`, the only place that inspects the location. Each entry is
-  `available` or `unavailable(reason)`; views disable controls with a tooltip built from the
-  reason, and the command palette filters by it. Host reachability (reachable, unreachable,
-  unprobed) is runtime state, kept apart from capabilities: actions on an unreachable host
-  fail fast with a clear error.
-
-**Feature classes.**
+  (about 145 and 78 uses today) are replaced by `location` plus `localURL: URL?`, nil for a
+  remote location. Each call site picks one: go through the host, sit behind a capability, or
+  unwrap because it is local by construction (for example a path from `NSOpenPanel`).
+- **Host boundary.** `RepositoryHost` exposes operations, not mechanisms. The local
+  implementation keeps today's fast paths (direct reads of `.git/HEAD`, `index.lock` and the
+  12-byte index header that sets watcher timing); the remote implementation uses batched C5
+  commands. `observeChanges(_:)` is FSEvents locally and polling remotely. `GitClient` gets
+  execution from the host, not from a global `ShellClient` and ad-hoc `GitClient()`
+  instances.
+- **Capabilities.** A static policy `resolve(kind:location:)` combined with cached host facts
+  (git, bash, tmux, gh present) gives `available` or `unavailable(reason)` per feature.
+  Reachability (reachable, unreachable, unprobed) is runtime state and stays separate. Views
+  disable controls with a tooltip from the reason; the command palette filters by it. The same
+  check runs at the execution and admission boundary, so a hidden button is not the only
+  guard.
 
 | Class | Features |
 | --- | --- |
-| Host-agnostic through primitives | Worktree list/create (copy flags)/remove/rename, branch and dirty state, GitHub PR status (resolve `owner/repo` once on the host, keep `gh` local with `--repo`), scripts and terminals |
-| Local by nature | Open in Finder/editor, workspaces (`ProjectWorkspace`), external diff tool, clone destination |
-| Deferred (remote later with more primitives) | Diff window (`git diff` + file read), line counts, icon detection |
+| Host-agnostic | Worktree list/create (copy flags)/remove/rename, branch and dirty state, GitHub PR status (resolve `owner/repo` once on the host, keep `gh` local with `--repo`), scripts and terminals |
+| Local by nature | Finder, workspaces (`ProjectWorkspace`), external diff tool, clone destination |
+| Deferred | Diff window (`git diff` + file read), line counts, icon detection; open in editor through remote URIs (`vscode://vscode-remote/ssh-remote+<host>/<path>`, Zed `ssh://`) |
 
 Callers that bypass `ShellClient` today (clone, `ExternalDiffSnapshotClient`,
-`DiffWindowState`, `OutgoingChangesClient`, workspace runner, archive script) either move
-behind the host or sit behind a capability.
+`DiffWindowState`, `OutgoingChangesClient`, workspace runner, archive script) move behind the
+host or sit behind a capability.
 
-**Remote specifics.**
+- **Persistence and migration.** `PersistedRepositoryEntry` gains an optional host profile.
+  Path-keyed `@Shared` stores, snapshots and the repository settings key
+  (`~/.prowl/repo/<name>`) include the host profile; existing local identities migrate
+  unchanged. The snapshot cache does not drop remote entries because of `fileExists`.
+  Renaming or removing a host profile or a repository states what happens to its sessions.
+- **Add flow.** "Add Remote Folder…" takes a host and a path; validation runs on the side
+  channel. An unreachable host stays listed as unavailable.
+- **Refresh.** One polling command returns HEAD, branch, porcelain status and the worktree
+  list.
+- **Terminals.** Tabs, splits and run scripts start through `ssh -t` with the stored
+  connection recipe, typed as initial input so the pane falls back to a local shell (with the
+  L0 marker) when ssh exits. A split inherits the remote cwd from the probe. The layout
+  snapshot stores the origin so restore reconnects.
+- **Profile launches.** Compiled from the structured invocation (argv, environment, remote
+  cwd), not by rewriting `AgentProfileLaunchPlan.terminalInput`, which contains local home
+  assignments and carrier references. Carrier values stay private (never visible in typed
+  text) and payloads arrive byte for byte. Profiles that need a local dedicated home are
+  unavailable for remote folders until remote account binding is designed. Managed hooks and
+  Codex shell probes are skipped; L0 detection covers the session.
 
-- **Persistence.** `PersistedRepositoryEntry` gains an optional host. Path-keyed `@Shared`
-  stores and the repository settings key (`~/.prowl/repo/<name>`) include the host. The
-  snapshot cache does not drop remote entries because of `fileExists`.
-- **Add flow.** "Add Remote Folder…" takes a host alias and a path; validation runs on the
-  side channel (`pwd -P`, `git rev-parse --show-toplevel`). An offline host shows as
-  unavailable and is not removed.
-- **Transport.** The remote host runs `cd <dir> && <cmd>` over the L0 side channel with POSIX
-  quoting; the worktree base directory is on the host (default `~/.prowl/repos/<name>` there).
-- **Refresh.** One polling exec returns HEAD, branch, porcelain status and the worktree list.
-- **Terminals.** Tabs, splits and run scripts type `ssh -t <host> 'cd <path> && exec "$SHELL" -l'`
-  (or the script command) as initial input, so the pane falls back to a local shell when ssh
-  exits. A split inherits the remote cwd from the probe's `E` record. The layout snapshot
-  gains the origin so restore reconnects.
-- **Profile launches.** Unmanaged: the typed `AgentProfileLaunchPlan.terminalInput` runs
-  through `ssh -t`; local carriers (`"$PROWL_LAUNCH_PROMPT"` …) are expanded locally and
-  re-quoted for the remote shell. Managed hooks, home provisioning and Codex shell probes are
-  skipped. L0 detection covers the session. Remote panes cannot be workflow participants.
+### L2 — Persistent sessions
 
-**Slices.**
-
-| Slice | Content | Behaviour change |
-| --- | --- | --- |
-| L1a | `RepositoryLocation`, `localURL: URL?`, call-site triage | None (every repository is local) |
-| L1b | `RepositoryHost` with the local implementation; `GitClient` and file reads move to command primitives | None |
-| L1c | `resolve(kind:location:)` with reasons; UI tooltips and palette filtering | None for local |
-| L1d | Remote host, add flow, persistence, polling refresh | Remote folders appear |
-| L1e | Remote terminals, splits, scripts, layout restore | Remote tabs |
-| L1f | Remote Profile launches | Remote agents from Profiles |
-
-### L2 — Persistent sessions (plan)
-
-The session belongs to the remote tmux; a Prowl tab is only a window onto it. The user never
-runs tmux by hand for this.
+The session belongs to the remote tmux; a Prowl pane is a window onto it. The user never runs
+tmux by hand for this.
 
 - **Option.** "Keep sessions alive (tmux)" per remote folder, with a global default in
   Settings. When the folder is added, the side channel checks for tmux through a login shell:
   present → on by default; absent → off, with a hint to install tmux.
-- **Launch.** With the option on, every tab Prowl opens for the folder runs
-  `ssh -t <host> 'cd <path> && exec "$SHELL" -lc "exec tmux -L prowl -f /dev/null
-  new-session -A -s prowl-<tab id> -c <path> \; set-option -g status off \; set-option -g
-  focus-events on"'`. The login shell gives the tmux PATH; `-A` creates or reattaches. Each
-  session is tagged with tmux user options `@prowl_worktree` and `@prowl_tab`. The final
-  option set (mouse, extended keys, history) is decided during implementation.
-- **Lifecycle (decided 2026-10-17).** Closing a tab detaches; the session keeps running. App
-  quit and connection loss also detach. Ending a session is explicit: "End Session" on the tab
-  and in the session list, and a close variant (for example ⌥-close) that ends it. Removing or
-  archiving a worktree ends its sessions after a confirmation that lists running agents. No
-  time-based cleanup. Undo close tab (069) reattaches.
-- **Discovery.** The remote tmux is the source of truth; the layout snapshot is an index.
-  Restore reattaches each tab by session name. Opening a worktree lists its running sessions
-  from `tmux -L prowl ls` with the tags, so a lost snapshot or a new Mac reattaches instead of
-  creating duplicates.
-- **Detached sessions are visible.** The worktree row shows "N background sessions"; the list
-  reattaches one as a tab. The probe enumerates `tmux -L prowl list-panes -a` (no client
-  needed), reads each pane tty's foreground group for identity, and captures the pane text for
-  state, while Prowl runs and the folder is visible.
-- **Detection when attached.** Identity from the probe (`M` record, by client tty). With the
-  status bar off, the local surface equals the agent screen, so local screen rules apply.
-- **History.** For Prowl-managed tmux tabs, `prowl read --last N` reads history through the
-  side channel with `tmux capture-pane -S -N`. UI scrolling through tmux history (`mouse on`)
-  changes mouse selection; decide after a hands-on check.
-- **User-owned tmux** attached in a Prowl pane keeps the L0 tmux path (capture text).
-- **Known limits.** No OSC 7501 inside tmux (screen rules give state); the alternate screen
-  leaves Ghostty scrollback empty; mouse and copy mode follow tmux; several clients on one
-  session share one size; nested tmux inside a Prowl session is unsupported (the probe follows
-  one level).
+- **Session per pane.** Each Ghostty leaf has its own managed session, keyed by a durable
+  remote-session UUID stored in the snapshot leaf (`TerminalLayoutSnapshotPayload`). Tab and
+  group identity are metadata. Prowl keeps a remote session apart from its zero or more local
+  attachments.
+- **Tags.** tmux user options record schema version, remote-session UUID, host profile UUID,
+  canonical worktree path and local tab metadata. Discovery from another Mac matches the
+  canonical path, not a local alias.
+- **Create, attach, end are separate operations.**
+  - Create: `new-session -d` with the tags in the same command chain, then attach. A Profile
+    or script command is the session's initial command and runs only at creation.
+  - Attach: `attach-session` to an existing session; restore never runs the initial command
+    again. A missing session offers "Start new session" explicitly, so an ended session is not
+    silently recreated.
+  - End: `kill-session` on "End Session", ⌥-close, or worktree removal. It invalidates restore
+    and undo entries.
+  - Untagged or half-created `prowl` sessions are reconciled without rerunning a command.
+- **Lifecycle (decided 2026-10-17).** Closing a pane or tab detaches; the session keeps
+  running, and a notice says "Session kept running on <host>" with Undo. App quit and
+  connection loss also detach. Undo close (069) keeps the surface and its ssh process during
+  the undo window; when the window expires the surface ends and the tmux client detaches. No
+  time-based cleanup.
+- **Worktree remove and archive.** Validate first (dirty check), then end sessions, then
+  remove. Report partial outcomes. A lost connection is never reported as a successful end;
+  reconcile before retrying a destructive step.
+- **Discovery and visibility.** The remote tmux is the source of truth; the snapshot is an
+  index. Opening a worktree lists its tagged sessions, so a lost snapshot or a second Mac
+  reattaches instead of duplicating. The worktree row shows "N background sessions". The probe
+  enumerates `tmux -L prowl list-panes -a` (no client needed) for identity and captures pane
+  text for state, while Prowl runs and the folder is visible.
+- **State and history.** Capture text is the state source for attached and detached sessions
+  (L0 item 6). `prowl read --last N` on a managed session uses `capture-pane -p` (stdout) on
+  the exact pane, with defined line semantics, alternate-screen handling and a byte limit.
+- **Launch command.** `ssh -t <recipe> 'cd <path> && exec "$SHELL" -lc "exec tmux -L prowl -f
+  /dev/null …"'`; the login shell gives the tmux PATH. Options include `status off` and
+  `focus-events on`; mouse, extended keys and history are decided during implementation.
+- **Known limits.** No OSC 7501 inside tmux; the alternate screen leaves Ghostty scrollback
+  empty; mouse and copy mode follow tmux; several clients on one session share one size.
+
+### Follow-up UX items
+
+Planned after the layer that enables them; not acceptance gates of that layer.
+
+| Item | After |
+| --- | --- |
+| Host diagnostics page: SSH authentication, pane correlation, required tools, persistence availability, each with its own fix | L1 |
+| Open in editor through remote URIs | L1 |
+| Unified session picker: attached and background sessions with agent, worktree, last observation, attachment count, Resume, End Session | L2 |
+| Reconnect to the same sessions after sleep or network recovery, keeping titles and layout; disclose another attached client before taking over | L2 |
+
+### Slices and PRs
+
+Contracts land before new behaviour, so launch and persistence are not rewritten later.
+
+| PR | Slice | Content | Behaviour change |
+| --- | --- | --- | --- |
+| 1 | S1 | C2 typed `ProcessRef` through classifier, pane state, generation, caches; retire-on-change; local-only OS entry points | None |
+| 2 | S2 | C1 host identity, C4 connection owner, C3 snapshot contract, C5 command model, C6 probe and its parser (unit tested with recorded output) | None (unused) |
+| 3 | S3 | L0 manual correlation: `LC_PROWL_PANE`, argv grammar, correlation states, generation and fence, release, degraded OSC binding, admission refusal | Manual remote agents appear |
+| 4 | S4 | L0 UX: host label, connection health, ssh-ended marker, CLI fields, docs | UI |
+| 5 | S5 | L0 tmux: user-owned tmux mapping and capture-based state | tmux panes detected |
+| 6 | L1a | `RepositoryLocation`, `localURL: URL?`, call-site triage | None |
+| 7 | L1b | `RepositoryHost` local implementation (fast paths kept); `GitClient` routed through it | None |
+| 8 | L1c | Capability policy with reasons, enforced at execution and admission | None for local |
+| 9 | L1d | Remote host implementation, `HostProfile` persistence and migration, add flow, polling | Remote folders appear |
+| 10 | L1e | Remote terminals, splits, scripts, layout restore | Remote tabs |
+| 11 | L2a | Session model: per-leaf session UUID, tags, create/attach/end, close notice, capture state, history read | Persistent sessions |
+| 12 | L2b | Discovery, background sessions on the worktree row, worktree remove/archive ordering | Background sessions |
+| 13 | L1f | Remote Profile launches from structured invocation (create-once inside L2 sessions) | Remote Profiles |
 
 ### Acceptance criteria (draft)
 
 | Id | Criterion |
 | --- | --- |
-| L0-1 | Manual `ssh host` + Claude Code or Codex in a Prowl pane appears in Active Agents within 2 s of start, with correct agent and host, on a macOS host and on a Linux host (OpenSSH ≥ 9.8 `sshd-session` and older `sshd`) |
-| L0-2 | Claude Code state follows OSC 7501 with local latency; Codex state follows screen rules; Blocked shows for a permission prompt on both |
-| L0-3 | Two panes on one host, and two hosts, map without cross-talk |
-| L0-4 | `kill -9` of the remote agent releases the entry within 3 s; closing ssh releases at once |
-| L0-5 | Unit tests per isolation seam; a remote pid equal to a live local pid binds no local session, file or registry |
-| L0-6 | User tmux attached in a pane: identity via `M`, state from capture text |
-| L0-7 | Unprobed host: verified producers show with heuristic confidence; backoff, no retry storm |
-| L0-8 | At most one probe run per host per second; no CPU regression in `make measure-cpu`; probe < 0.5 s on the test hosts |
-| L0-9 | The remote host has no new files and no changed rc files after a session |
-| L1-1 | Add, persist and restore a remote folder; an offline host stays listed as unavailable |
-| L1-2 | Worktree list/create/remove/rename on a bash 3.2 (macOS) host and a bash 5 (Linux) host |
-| L1-3 | Branch and dirty state refresh within one polling interval |
-| L1-4 | Tab, split and run script open at the remote path; splits inherit the remote cwd; restore reconnects |
-| L1-5 | Remote Profile launch delivers prompts with quotes, newlines and `$` intact (tests) |
-| L1-6 | Disabled features are hidden or disabled with a tooltip; PR status works |
-| L1-7 | L1a–L1c ship with no behaviour change for local repositories (existing tests pass; no new local-path access outside `RepositoryHost` and capability-gated code) |
-| L2-1 | Opening a remote worktree with the option on attaches tmux automatically; the user never types a tmux command |
-| L2-2 | A session survives tab close, app quit and network loss; restore reattaches with the screen intact |
-| L2-3 | Closing a tab detaches; "End Session", ⌥-close and worktree removal end sessions; no time-based cleanup |
-| L2-4 | With a lost layout snapshot, opening the worktree lists its tagged sessions and reattaches without duplicates |
-| L2-5 | Detached sessions show on the worktree row with agent identity and state |
-| L2-6 | Inside Prowl tmux: identity via the probe, state via local screen rules; `prowl read --last N` returns tmux history |
-| L2-7 | `docs/` documents the option, the detach semantics and the tmux limits |
+| L0-1 | Manual `ssh` + Claude Code or Codex appears with correct agent and host: p95 ≤ 1.5 s from agent start on a warm connection, ≤ 3 s cold; on a macOS host and Linux hosts with `sshd-session` (OpenSSH ≥ 9.8) and `sshd` naming |
+| L0-2 | Claude Code state follows OSC 7501 with local latency; Codex follows screen rules; Blocked shows for a permission prompt on both |
+| L0-3 | Correlation matrix (`-F`, missing `SendEnv`/`AcceptEnv`, existing ControlMaster, ProxyJump, different users and ports, two ssh jobs with one UUID): correct attribution or an explicit degraded state, never an arbitrary match |
+| L0-4 | `kill -9` of a probed agent releases within 3 s; local `ssh` exit releases at once; OSC `clear` with a live process keeps the agent; late replies after `ssh` exit do not resurrect it |
+| L0-5 | Jittered elapsed samples keep one generation; rapid same-agent restart; local/remote pid collision; host A→B and remote→local in one surface; two hosts sharing a pid: zero local session, file or provider access for remote origins |
+| L0-6 | Blackholed traffic, stopped side channel, hung probe, sleep/wake: "status unavailable" within the stale deadline; no false Idle, Done or exit; bounded tasks and retries |
+| L0-7 | User-owned tmux: identity via the mapping, state via capture; copy mode and pane switches do not misattribute; unmatched screens stay unknown |
+| L0-8 | Unprobed or unmapped pane: verified producers show with heuristic confidence; others show the correlation state |
+| L0-9 | Cost against a recorded baseline with a stated tolerance: local CPU at 1/10/50 remote panes, remote CPU, bytes/s, subprocess count; one in-flight probe per connection; probe p95 < 0.5 s on a host with ≥ 500 processes |
+| L0-10 | No Prowl-installed files, configuration or probe artifacts on the host; no rc edits |
+| L0-11 | Host label, connection health and the ssh-ended marker are visible; `prowl agents --json` carries host, correlation state and freshness |
+| L1-1 | Add, persist, restore a remote folder; an alias edit does not redirect it; hostile but valid path characters work; an unreachable host stays listed |
+| L1-2 | Old local settings and snapshots migrate unchanged; identical local and remote paths do not collide |
+| L1-3 | Worktree list/create/remove/rename on a bash 3.2 (macOS) host and a bash 5 (Linux) host |
+| L1-4 | Branch and dirty state refresh within one polling interval |
+| L1-5 | Tab, split and run script open at the remote path; splits inherit the remote cwd; restore reconnects |
+| L1-6 | Unavailable features are refused at the execution boundary (tests) and disabled with a reason in the UI; PR status works |
+| L1-7 | L1a–L1c change nothing for local repositories: existing tests pass and local fast paths (watcher timing) are unchanged |
+| L1-8 | Remote Profiles: large multiline prompts, empty arguments, quotes, `$`, `$(…)` text and environment overrides arrive byte for byte; carrier values never appear in typed text; dedicated-home Profiles are unavailable with a reason; reconnect never relaunches |
+| L2-1 | Opening a remote worktree with the option on attaches tmux automatically; the user types no tmux command |
+| L2-2 | A session survives tab close, app quit, network loss and sleep; restore reattaches with the screen intact |
+| L2-3 | Two splits in one tab keep independent sessions through close, undo and restore |
+| L2-4 | Close detaches with a notice and Undo; End Session and ⌥-close end; an ended session is not recreated on restore; offline End Session is not reported as success |
+| L2-5 | Lost snapshot or a second Mac: tagged sessions are found and reattached without duplicates; an interrupted creation is reconciled; no prompt or script replays on attach |
+| L2-6 | Worktree remove/archive validates before ending sessions and reports partial outcomes |
+| L2-7 | Background sessions show on the worktree row with agent identity and state |
+| L2-8 | State via capture inside Prowl tmux, including copy mode and pane switches; `prowl read --last N` returns tmux history within the byte limit |
+| L2-9 | `docs/` documents the option, the detach semantics and the tmux limits |
 
 ## Alternatives & decisions
 
 | Option | Decision |
 | --- | --- |
 | Resident `prowl serve` with HTTP, pairing and a PTY stream (external 082 proposal) | Rejected: daemon, linger and hook injection are more intrusive than hooks; manual non-tmux sessions get presence only; large scope |
-| OSC `app` as the only identity | Rejected as the main path: 3 of 17 agents, no `kill -9` detection, self-declared. Kept as the degraded mode |
-| Correlation by `SSH_CONNECTION` client port | Rejected: breaks with ControlMaster and ProxyJump |
+| OSC `app` as the only identity | Rejected as the main path: 3 of 17 agents, no `kill -9` detection, self-declared. Kept as the degraded binding |
+| `SSH_CONNECTION` client port as the only key | Rejected (breaks with ControlMaster and ProxyJump); kept as the secondary key (2026-10-17) |
 | Preamble that reports the remote tty via OSC | Rejected: needs a Prowl-built command, misses manual `ssh` |
 | Compiled remote probe binary | Rejected: a piped `sh` script works on macOS and Linux with no install |
 | Read env of the anchor shell on macOS | Not possible (platform binary); read foreground members instead |
 | Map tmux by inherited env | Rejected: the tmux server keeps the first client's variables; map by client tty |
-| Capture text for Prowl-managed tmux | Not needed while attached: status bar off makes the local surface equal the agent screen. Used for detached sessions |
-| Closing a remote tmux tab kills the session | Rejected (2026-10-17): against tmux's model and the "leave the agent running" use; close detaches, ending is explicit |
+| Generation from `localNow − elapsed` | Rejected (review round 1): unstable across samples and admits predecessors; use boot id + native start token, and an attachment-epoch fence |
+| Alias in repository identity | Rejected (review round 1): alias edits redirect data; use `HostProfile` UUID |
+| Local screen as state source inside tmux | Rejected (2026-10-17): copy mode, choosers and pane switches break it; capture everywhere in tmux, woken by local screen changes |
+| Session per tab | Rejected (review round 1): splits would share a session; one session per pane |
+| `new-session -A` for restore | Rejected (review round 1): recreates ended sessions; separate create and attach |
+| Rewriting rendered `terminalInput` for remote | Rejected (review round 1): leaks carriers, keeps local home paths; compile from structured invocation |
+| Commands only, no file reads, for local too | Rejected (review round 1): slows local paths; keep local fast paths behind the host boundary |
+| Closing a remote tmux tab kills the session | Rejected (2026-10-17): against tmux's model and the "leave the agent running" use |
 | tmux opt-in only | Rejected: default on when the host has tmux, because losing the agent on disconnect is the larger cost |
 | L3 resident observer | Not planned (2026-10-16) |
+
+## Open questions
+
+- Secondary port key: reading the local `ssh` socket port with libproc and the remote
+  `SSH_CONNECTION` from a macOS foreground member; behaviour with `ProxyCommand`.
+- Real network loss (half-open TCP) and `ServerAliveInterval` for the side channel.
+- Older `sshd` naming, Alpine and hardened `AcceptEnv` defaults.
+- Probe cost on process-heavy macOS hosts (the spike calls `ps` per process).
+- tmux option set: mouse, extended keys (Shift+Enter in agents), history limit.
 
 ## Amendments
 
 - Updated 2026-10-16: spike record for L0–L2 — see [002-spike-findings.md](002-spike-findings.md)
+- Updated 2026-10-17: revised in place after review round 1 — shared contracts C1–C6 (host identity, typed process reference, snapshot freshness, connection owner, structured commands, probe wire format), secondary port key, attachment-epoch fence, `clear` as withdrawal, capture-based tmux state, per-pane sessions with separate create/attach/end, structured remote Profile launch, local fast paths behind the host boundary, admission enforcement, UX items, PR order
