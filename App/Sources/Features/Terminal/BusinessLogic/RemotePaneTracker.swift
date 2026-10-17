@@ -110,9 +110,6 @@ final class RemotePaneTracker {
     /// When a snapshot last confirmed the bound agent, or for an unprobed binding, when its
     /// producer last reported.
     var confirmedAt: Date?
-    /// The visible screen of the tmux pane the session shows, while correlated (L0 item 6):
-    /// inside tmux it, not the local screen, is the agent's screen.
-    var tmuxScreen: String?
 
     func context(now: Date, stateKnown: Bool = true) -> RemoteAgentContext {
       RemoteAgentContext(
@@ -148,9 +145,10 @@ final class RemotePaneTracker {
   private var retired = false
   private var lastRequestAt: TimeInterval?
   private(set) var latest: RemoteProbeSnapshot?
-  /// The tmux pane this pane's session shows, from the latest snapshot that mapped the
-  /// session; nil when that session shows no tmux client (docs-ai 082, S5).
-  private(set) var tmuxPane: RemoteProbeTmuxPane?
+  /// The pane's session shows a tmux client (docs-ai 082, S5); a gap keeps it.
+  private(set) var isInTmux = false
+  /// The latest capture whose pane runs the bound agent, and when it was acquired.
+  private var tmuxCapture: (screen: String, acquiredAt: Date)?
   private var consumedSequence: (epoch: UInt64, sequence: UInt64)?
 
   /// The remote session's anchor, learned from a snapshot that carried this pane's id. On
@@ -276,12 +274,28 @@ final class RemotePaneTracker {
     }
     return Observation(
       correlation: correlation, connection: lease?.connection, identified: bound, verdict: verdict,
-      programStatusFence: boundRecordFence, confirmedAt: confirmedAt, tmuxScreen: tmuxScreen)
+      programStatusFence: boundRecordFence, confirmedAt: confirmedAt)
   }
 
-  /// The capture of the tmux pane this pane's session shows, while correlated.
-  var tmuxScreen: String? {
-    correlation == .correlated ? tmuxPane?.screen : nil
+  /// The agent's screen when the pane's session shows a tmux client (L0 item 6).
+  enum TmuxScreen: Equatable {
+    /// The latest capture of the bound agent's own pane.
+    case capture(String)
+    /// No capture of that pane is fresh: the state is unknown, and the local screen (the
+    /// client's view) never stands in for it.
+    case unavailable
+  }
+
+  /// nil outside tmux, where the local screen is the agent's screen. Inside, the last
+  /// capture that showed the bound agent's pane counts for `RemoteAgentContext.staleAfter`
+  /// after its acquisition; a failed or partial probe, or a capture of another pane (a
+  /// switch the presence rule has not released yet), does not replace it.
+  func tmuxScreen(now: Date) -> TmuxScreen? {
+    guard isInTmux else { return nil }
+    guard let tmuxCapture, now.timeIntervalSince(tmuxCapture.acquiredAt) <= RemoteAgentContext.staleAfter else {
+      return .unavailable
+    }
+    return .capture(tmuxCapture.screen)
   }
 
   /// The local screen of a tmux pane changed: the tmux client drew something, so the
@@ -348,23 +362,28 @@ final class RemotePaneTracker {
     // ambiguous scan proves nothing (C3).
     guard mapped.count == 1 else { return bound == nil ? nil : .unchanged }
     // A partial snapshot that lost the tmux records is a gap, not a client that left.
-    if snapshot.isComplete || mapped[0].tmux != nil { tmuxPane = mapped[0].tmux }
+    if snapshot.isComplete || mapped[0].tmux != nil { isInTmux = mapped[0].tmux != nil }
     let job = correlatedJob(report: report, epoch: snapshot.connectionEpoch)
     if let identified = job.flatMap(identifyAgentInJob), identified.process.ref != bound?.process.ref {
       bound = identified
+      tmuxCapture = nil
       presence = RemoteProcessPresence()
       fenceHistory.bind(identified.process.ref, confirmedAt: now)
     }
     guard let current = bound else { return nil }
     let contains = job?.processes.contains { $0.ref == current.process.ref } ?? false
+    // Freshness counts from the snapshot's acquisition, not from when a tick read it.
+    let acquiredAt = now.addingTimeInterval(-max(0, uptime() - snapshot.startedAt))
+    // A capture describes the bound agent only when its pane runs that agent.
+    if contains, let screen = mapped[0].tmux?.screen { tmuxCapture = (screen, acquiredAt) }
     let verdict = presence.observe(snapshot, contains: contains, now: uptime())
     switch verdict {
     case .present:
-      // Freshness counts from the snapshot's acquisition, not from when a tick read it.
-      confirmedAt = now.addingTimeInterval(-max(0, uptime() - snapshot.startedAt))
+      confirmedAt = acquiredAt
     case .released:
       bound = nil
       confirmedAt = nil
+      tmuxCapture = nil
       presence = RemoteProcessPresence()
     case .missing, .unchanged:
       break

@@ -269,7 +269,7 @@ extension WorktreeTerminalState {
       )
     }
     let localText = view.bridge.readActiveText() ?? ""
-    if let tmuxScreen = remotePaneTrackers[surfaceID]?.tmuxScreen {
+    if let tmuxScreen = remotePaneTrackers[surfaceID]?.tmuxScreen(now: Date()) {
       // Inside tmux the local screen is the tmux client's (status line, other panes, copy
       // mode); the agent's own screen is the capture. A local change still means the
       // capture is likely stale, so it asks for a probe now.
@@ -277,7 +277,10 @@ extension WorktreeTerminalState {
       if tmuxLocalScreenHashBySurface.updateValue(localHash, forKey: surfaceID) != localHash {
         remotePaneTrackers[surfaceID]?.requestRefreshForScreenChange()
       }
-      return (tmuxScreen, cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: tmuxScreen))
+      guard case .capture(let text) = tmuxScreen else {
+        return ("", AgentScreenDetection(state: .unknown, reason: .noRuleMatched))
+      }
+      return (text, cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: text))
     }
     tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
     let activeText = localText

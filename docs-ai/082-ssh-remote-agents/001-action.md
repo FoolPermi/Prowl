@@ -452,11 +452,23 @@ identity from the mapping and state from the screen.
 - **Identity.** `RemotePaneTracker.correlatedJob` takes the job from the session's tmux
   pane when the session shows a tmux client. When that pane's job is empty, there is no
   agent; the client itself is never classified.
-- **Screen.** The tracker keeps `tmuxPane` from the latest snapshot that mapped the
-  session. A partial snapshot that lost the tmux records is a gap and keeps it.
-  `Observation.tmuxScreen` carries the capture while the pane is `correlated`.
-  `pollScreen` reads that text instead of the local screen, with the same per-surface
-  scan memo. Staleness follows `confirmedAt`, which comes from the same snapshot.
+- **Screen.** The tracker separates two facts.
+  - `isInTmux`: the session shows a tmux client. A partial snapshot without the tmux
+    records is a gap and keeps it.
+  - `tmuxCapture`: the latest capture whose pane runs the bound agent, with its
+    acquisition time. It is cleared on rebind and on release.
+
+  `tmuxScreen(now:)` returns three values:
+  - nil outside tmux;
+  - `.capture(text)` while that capture is no older than `RemoteAgentContext.staleAfter`;
+  - `.unavailable` otherwise.
+
+  `pollScreen` scans the capture with the same per-surface memo. For `.unavailable` it
+  gives an unknown detection, so the remote context is state-unknown. It never reads the
+  local screen, which is the client's view, inside tmux. A failed or partial probe, or a
+  capture of another pane during the two-snapshot release hold, keeps the last capture
+  of the bound agent's pane, so the retained state never describes another pane (review
+  round 1).
 - **Wakes.** Output does not wake the detection loop, so the tick compares a hash of the
   local screen (`tmuxLocalScreenHashBySurface`). When it changes, the tick calls
   `requestRefreshForScreenChange()`, which requests at most one probe every
