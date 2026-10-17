@@ -218,6 +218,8 @@ struct RemoteProbeParserTests {
     #expect(try screenRecord(tmux: "printf '\\n\\n'") == "C\tPANE\t0\t%0A%0A\n")
     // A pane that closed after `list-clients`: no record, so the snapshot is incomplete.
     #expect(try screenRecord(tmux: "echo 'can\\'t find pane: %3' >&2; exit 1") == "")
+    // A capture cut off by a lost server: part of a screen, then a failure. Still no record.
+    #expect(try screenRecord(tmux: "printf 'partial screen\\n'; exit 1") == "")
     // Past the cap (8 bytes here), the text is cut and marked.
     #expect(try screenRecord(tmux: "printf '0123456789'") == "C\tPANE\t1\t01234567\n")
   }

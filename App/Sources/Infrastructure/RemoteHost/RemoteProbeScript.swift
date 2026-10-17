@@ -222,12 +222,11 @@ nonisolated enum RemoteProbeScript {
     fi
 
     # screen_record <tmux> <socket> <tmux pane> <pane>: the C record of a pane's visible screen.
-    # A failed capture prints nothing, so the snapshot stays incomplete; a blank screen
-    # still prints its newlines.
+    # A failed capture prints nothing, even when it wrote part of a screen first, so the
+    # snapshot stays incomplete; a blank screen still prints its newlines.
     screen_record() {
-      # The x keeps a trailing newline and marks a capture that succeeded.
-      text=$("$1" -S "$2" capture-pane -p -t "$3" 2>/dev/null && printf x)
-      [ -n "$text" ] || return 0
+      # The x keeps a trailing newline; the status is the capture's own.
+      text=$("$1" -S "$2" capture-pane -p -t "$3" 2>/dev/null && printf x) || return 0
       text=${text%x}
       truncated=0
       if [ "$(printf '%s' "$text" | wc -c)" -gt "$cap" ]; then
