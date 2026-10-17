@@ -239,8 +239,7 @@ extension WorktreeTerminalState {
     )
     next.sessionMissStreak = sessionMissStreak
     next.decision = decision
-    next.remote =
-      next.agentProcess?.origin == .local ? nil : remote?.context(now: now, stateKnown: stabilized != .unknown)
+    next.remote = remoteContext(remote, origin: next.agentProcess?.origin, stabilized, surfaceID, now: now)
     // Limit logging to meaningful transitions - agent identity or
     // stabilized state changes. Raw oscillation and `seen` flips are
     // routine and would otherwise dominate the log stream.
@@ -258,6 +257,18 @@ extension WorktreeTerminalState {
   /// The screen half of one poll. A verified OSC 7501 root record decides the state,
   /// so the delegated tick does not read the screen at all: the last scan stands in
   /// as the raw state and as the resolver's text (docs-ai 079).
+  /// The published remote context, nil for a local agent. Evidence decides the state only
+  /// when the stabilized state is known and, inside tmux, a capture is fresh: the state
+  /// machine keeps the last stable state for display when it is given an unknown.
+  private func remoteContext(
+    _ remote: RemotePaneTracker.Observation?, origin: ProcessOrigin?, _ stabilized: AgentRawState,
+    _ surfaceID: UUID, now: Date
+  ) -> RemoteAgentContext? {
+    guard origin != .local else { return nil }
+    let known = stabilized != .unknown && remotePaneTrackers[surfaceID]?.tmuxScreen() != .unavailable
+    return remote?.context(now: now, stateKnown: known)
+  }
+
   private func pollScreen(
     for view: GhosttySurfaceView, surfaceID: UUID, agent: DetectedAgent, delegated: Bool
   ) -> (activeText: String, detection: AgentScreenDetection) {
@@ -269,7 +280,7 @@ extension WorktreeTerminalState {
       )
     }
     let localText = view.bridge.readActiveText() ?? ""
-    if let tmuxScreen = remotePaneTrackers[surfaceID]?.tmuxScreen(now: Date()) {
+    if let tmuxScreen = remotePaneTrackers[surfaceID]?.tmuxScreen() {
       // Inside tmux the local screen is the tmux client's (status line, other panes, copy
       // mode); the agent's own screen is the capture. A local change still means the
       // capture is likely stale, so it asks for a probe now.
@@ -278,7 +289,10 @@ extension WorktreeTerminalState {
         remotePaneTrackers[surfaceID]?.requestRefreshForScreenChange()
       }
       guard case .capture(let text) = tmuxScreen else {
-        return ("", AgentScreenDetection(state: .unknown, reason: .noRuleMatched))
+        // No fresh capture: nothing the cache holds may answer a condition either.
+        let unknown = AgentScreenDetection(state: .unknown, reason: .noRuleMatched)
+        lastAgentScreenScanBySurface[surfaceID] = AgentScreenScan(agent: agent, text: "", detection: unknown)
+        return ("", unknown)
       }
       return (text, cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: text))
     }
@@ -496,7 +510,8 @@ extension WorktreeTerminalState {
       invocation: SSHInvocation.parse(
         ssh.arguments, workingDirectory: ProcessDetection.currentDirectory(pid: ssh.generation.pid)),
       fenceHistory: remoteFenceHistoryBySurface[surfaceID]?[ssh.generation],
-      source: remoteSnapshotSourceForTesting ?? .live
+      source: remoteSnapshotSourceForTesting ?? .live,
+      uptime: remoteUptimeForTesting ?? { ProcessInfo.processInfo.systemUptime }
     ) { [weak self] in
       self?.wakeAgentDetectionForRemoteSnapshot(surfaceID: surfaceID)
     }

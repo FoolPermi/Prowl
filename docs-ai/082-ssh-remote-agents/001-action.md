@@ -463,12 +463,21 @@ identity from the mapping and state from the screen.
   - `.capture(text)` while that capture is no older than `RemoteAgentContext.staleAfter`;
   - `.unavailable` otherwise.
 
-  `pollScreen` scans the capture with the same per-surface memo. For `.unavailable` it
-  gives an unknown detection, so the remote context is state-unknown. It never reads the
-  local screen, which is the client's view, inside tmux. A failed or partial probe, or a
-  capture of another pane during the two-snapshot release hold, keeps the last capture
-  of the bound agent's pane, so the retained state never describes another pane (review
-  round 1).
+  `pollScreen` scans the capture with the same per-surface memo, and never reads the local
+  screen (the client's view) inside tmux.
+  - A failed or partial probe, or a capture of another pane during the two-snapshot
+    release hold, keeps the last capture of the bound agent's pane. So the retained
+    state never describes another pane (review round 1).
+  - For `.unavailable`, it stores an unknown scan. The context's `isStateKnown` also
+    reads the capture's availability, because the state machine keeps the last stable
+    state for display when it is given an unknown. Conditions then see `unknown`, not the
+    old state (review round 2).
+  - The capture's age counts in the tracker's `uptime`, which tests inject through
+    `remoteUptimeForTesting`.
+- **Where the agent was last seen.** `boundFromTmux` follows the latest snapshot that
+  contains the bound agent. After a detach, the session shows the remote shell, while the
+  retained agent keeps its own capture until the presence rule releases it. The shell
+  screen never describes it (review round 2).
 - **Wakes.** Output does not wake the detection loop, so the tick compares a hash of the
   local screen (`tmuxLocalScreenHashBySurface`). When it changes, the tick calls
   `requestRefreshForScreenChange()`, which requests at most one probe every

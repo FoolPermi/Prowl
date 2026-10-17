@@ -158,8 +158,8 @@ struct RemoteAgentDetectionTests {
 
   /// A snapshot whose session shows a tmux client (pid 150); its active pane runs `pane`.
   private func tmuxSnapshot(
-    _ sequence: UInt64, pane: UUID?, foreground: RemoteProbeProcess, screen: String, inMode: Bool = false,
-    paneID: String = "%0"
+    _ sequence: UInt64, pane: UUID?, foreground: RemoteProbeProcess, screen: String?, inMode: Bool = false,
+    paneID: String = "%0", outcome: RemoteProbeSnapshot.Outcome = .complete, age: TimeInterval = 0
   ) -> RemoteProbeSnapshot {
     let client = remoteProcess(150, name: "tmux")
     var session = RemoteProbeSession(
@@ -169,10 +169,10 @@ struct RemoteAgentDetectionTests {
       clientPID: 150, paneID: paneID, tty: "/dev/pts/3", isInMode: inMode,
       foregroundProcessGroupID: foreground.processGroupID, processes: [foreground], screen: screen,
       isScreenTruncated: false)
-    let now = ProcessInfo.processInfo.systemUptime
+    let now = ProcessInfo.processInfo.systemUptime - age
     return RemoteProbeSnapshot(
       connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), connectionEpoch: 0, sequence: sequence,
-      startedAt: now, finishedAt: now, outcome: .complete,
+      startedAt: now, finishedAt: now, outcome: outcome,
       report: RemoteProbeReport(operatingSystem: .linux, bootID: "boot", sessions: [session]))
   }
 
@@ -1259,23 +1259,8 @@ struct RemoteAgentDetectionTests {
     await deliver(fixture, snapshot(2, pane: nil, foreground: nil, outcome: .failed(.unreachable)))
     await detect(fixture, screen: .unknown)
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
-    var partial = tmuxSnapshot(
-      3, pane: fixture.surfaceID, foreground: remoteProcess(200, name: "claude"), screen: Self.workingClaude)
-    partial = RemoteProbeSnapshot(
-      connection: partial.connection, connectionEpoch: 0, sequence: 3, startedAt: partial.startedAt,
-      finishedAt: partial.finishedAt, outcome: .partial,
-      report: RemoteProbeReport(
-        operatingSystem: .linux, bootID: "boot",
-        sessions: partial.report?.sessions.map { session in
-          var session = session
-          session.tmux = session.tmux.map {
-            RemoteProbeTmuxPane(
-              clientPID: $0.clientPID, paneID: $0.paneID, tty: $0.tty, isInMode: $0.isInMode,
-              foregroundProcessGroupID: $0.foregroundProcessGroupID, processes: $0.processes, screen: nil,
-              isScreenTruncated: false)
-          }
-          return session
-        } ?? []))
+    let partial = tmuxSnapshot(
+      3, pane: fixture.surfaceID, foreground: remoteProcess(200, name: "claude"), screen: nil, outcome: .partial)
     await deliver(fixture, partial)
     await detect(fixture, screen: .unknown)
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
@@ -1285,10 +1270,56 @@ struct RemoteAgentDetectionTests {
   @Test func anOldCaptureLeavesTheStateUnknown() async throws {
     let probe = Probe()
     let fixture = makeFixture(probe: probe)
+    var clock: TimeInterval = 1_000
+    fixture.state.remoteUptimeForTesting = { clock }
+    var emitted: [ActiveAgentEntry] = []
+    fixture.state.onAgentEntryChanged = { emitted.append($0) }
+    fixture.surface.bridge.activeTextForTesting = "$ "
+    probe.job = sshJob
+    await detect(fixture)
+    await settle { fixture.source.recipes.count == 1 }
+    let claude = remoteProcess(200, name: "claude")
+    func snapshot(_ sequence: UInt64, screen: String?) -> RemoteProbeSnapshot {
+      let base = tmuxSnapshot(
+        sequence, pane: fixture.surfaceID, foreground: claude, screen: screen,
+        outcome: screen == nil ? .partial : .complete)
+      return RemoteProbeSnapshot(
+        connection: base.connection, connectionEpoch: 0, sequence: sequence, startedAt: clock, finishedAt: clock,
+        outcome: base.outcome, report: base.report)
+    }
+    await deliver(fixture, snapshot(1, screen: Self.blockedClaude))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .blocked)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.remote?.isStateKnown == true)
+    // Twelve seconds of probes that confirm the process but lose the screen.
+    clock = 1_012
+    await deliver(fixture, snapshot(2, screen: nil))
+    await detect(fixture, screen: .unknown)
+    let pane = try #require(fixture.state.surfaceAgentStates[fixture.surfaceID])
+    #expect(pane.remote?.isStale == false)
+    #expect(pane.remote?.isStateKnown == false)
+    #expect(emitted.last?.remote?.isStateKnown == false)
+    #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.detection.state == .unknown)
+    // A fresh capture of the agent's pane recovers it.
+    await deliver(fixture, snapshot(3, screen: Self.workingClaude))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.remote?.isStateKnown == true)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
+  }
+
+  @Test func aDetachedClientKeepsTheRetainedAgentOnItsOwnCapture() async {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
     await bindWorkingTmuxClaude(fixture, probe: probe)
-    let tracker = try #require(fixture.state.remotePaneTrackers[fixture.surfaceID])
-    #expect(tracker.tmuxScreen(now: Date()) == .capture(Self.workingClaude))
-    #expect(tracker.tmuxScreen(now: Date().addingTimeInterval(11)) == .unavailable)
+    // The user detached: the session shows the remote shell, and the local screen with it.
+    fixture.surface.bridge.activeTextForTesting = "$ "
+    await deliver(fixture, snapshot(2, pane: fixture.surfaceID, foreground: remoteProcess(101, name: "zsh")))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == remoteRef(200))
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
+    await deliver(fixture, snapshot(3, pane: fixture.surfaceID, foreground: remoteProcess(101, name: "zsh")))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.detectedAgent == nil)
   }
 
   @Test func anotherPanesCaptureNeverDescribesTheRetainedAgent() async {
