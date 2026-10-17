@@ -123,7 +123,9 @@ extension WorktreeTerminalState {
 
     let identified = job.flatMap { identifyAgentInJob($0) }
     let probedAgent = identified?.agent
-    let originFence = applyAgentOrigin(identified, surfaceID: surfaceID, now: now)
+    // The origin change is confirmed when the probe returns, not when the poll began:
+    // a report that landed while the probe ran still belongs to the departed origin.
+    let originFence = applyAgentOrigin(identified, surfaceID: surfaceID, now: max(now, Date()))
 
     var presence = agentDetectionPresenceBySurface[surfaceID] ?? AgentDetectionPresence()
     let agent = presence.update(detectedAgent: probedAgent, releaseOnMiss: finished != nil)

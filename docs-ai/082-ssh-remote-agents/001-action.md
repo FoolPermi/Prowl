@@ -45,5 +45,6 @@ sections below record what shipped and what differs from the plan.
     (`programStatusOriginBySurface`). The coordinator fence is the later of the
     generation's start and that moment, so records that arrived on a departed origin never
     decide for the returning agent, even after the coordinator is rebuilt (review round 1).
-    Reports between the change and the probe that sees it are left out too; the screen
-    decides until the next report.
+    The change is timestamped when the probe that saw it returns, so reports that landed
+    while that probe ran are left out too (review round 2); the screen decides until the
+    next report.

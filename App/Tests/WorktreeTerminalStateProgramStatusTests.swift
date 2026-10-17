@@ -583,6 +583,40 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .idle)
   }
 
+  @Test func departedOriginReportsDuringTheReturningProbeNeverDecide() async throws {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    await bind(fixture, probe: probe)
+    let remote = ProcessRef.remote(
+      RemoteProcessRef(
+        connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), bootID: "boot", pid: 7,
+        startToken: "t1"))
+    probe.job = ForegroundJob(
+      processGroupID: 7,
+      processes: [ForegroundProcess(ref: remote, parentPID: 1, name: "claude", argv0: "claude", cmdline: "claude")])
+    #expect(await detect(fixture))
+
+    // The poll that will see the local agent again starts; the remote reports are still
+    // in flight and land while its probe runs.
+    fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] = WorktreeTerminalState.AgentScreenScan(
+      agent: .claude, text: "", detection: AgentScreenDetection(state: .working, reason: .legacyDetector))
+    let entered = AsyncStream<Void>.makeStream()
+    probe.entered = entered.continuation
+    let tick = Task { await self.detect(fixture) }
+    var iterator = entered.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    fixture.state.handleProgramStatus(report(.done), surfaceID: fixture.surfaceID)
+    fixture.state.handleProgramStatus(report(.blocked, id: "child"), surfaceID: fixture.surfaceID)
+    probe.job = claudeJob()
+    probe.gate?.resume()
+    #expect(await tick.value)
+
+    #expect(fixture.state.agentDetectionCoordinators[fixture.surfaceID]?.isDelegated == false)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
+    fixture.state.handleProgramStatus(report(.idle), surfaceID: fixture.surfaceID)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.decision?.reason.identifier == "osc.idle")
+  }
+
   @Test func remoteLaunchNeverWearsALocalProfile() async throws {
     // The Profile's agent never appeared; the user ran `ssh host claude` in its pane.
     let probe = Probe()

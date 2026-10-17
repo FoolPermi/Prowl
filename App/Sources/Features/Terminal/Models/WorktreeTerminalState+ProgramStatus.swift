@@ -119,9 +119,9 @@ extension WorktreeTerminalState {
 
   /// Records the identified agent's origin and returns the surface's origin fence: the
   /// moment the current origin replaced another one, or nil while the surface has seen
-  /// one origin only. A probe gap keeps the last origin. Reports that arrive between the
-  /// origin change and the probe that sees it are left out too; the screen decides until
-  /// the next report.
+  /// one origin only. A probe gap keeps the last origin. `now` is when the probe that saw
+  /// the change returned, so reports that arrived before that confirmation (also those
+  /// that landed while the probe ran) are left out; the screen decides until the next report.
   func noteAgentOrigin(_ identified: IdentifiedAgentProcess?, surfaceID: UUID, now: Date) -> Date? {
     let previous = programStatusOriginBySurface[surfaceID]
     guard let origin = identified?.process.ref.origin else { return previous?.since }
