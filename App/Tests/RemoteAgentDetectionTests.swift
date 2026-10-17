@@ -156,6 +156,34 @@ struct RemoteAgentDetectionTests {
       report: RemoteProbeReport(operatingSystem: .linux, bootID: bootID, sessions: sessions))
   }
 
+  /// A snapshot whose session shows a tmux client (pid 150); its active pane runs `pane`.
+  private func tmuxSnapshot(
+    _ sequence: UInt64, pane: UUID?, foreground: RemoteProbeProcess, screen: String, inMode: Bool = false,
+    paneID: String = "%0"
+  ) -> RemoteProbeSnapshot {
+    let client = remoteProcess(150, name: "tmux")
+    var session = RemoteProbeSession(
+      paneID: pane, anchorPID: 100, tty: "/dev/pts/0", foregroundProcessGroupID: client.processGroupID,
+      processes: [client])
+    session.tmux = RemoteProbeTmuxPane(
+      clientPID: 150, paneID: paneID, tty: "/dev/pts/3", isInMode: inMode,
+      foregroundProcessGroupID: foreground.processGroupID, processes: [foreground], screen: screen,
+      isScreenTruncated: false)
+    let now = ProcessInfo.processInfo.systemUptime
+    return RemoteProbeSnapshot(
+      connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), connectionEpoch: 0, sequence: sequence,
+      startedAt: now, finishedAt: now, outcome: .complete,
+      report: RemoteProbeReport(operatingSystem: .linux, bootID: "boot", sessions: [session]))
+  }
+
+  private static let blockedClaude = """
+    ✻ Tempering… (12s · esc to interrupt)
+    Do you want to proceed?
+    ❯ 1. Yes
+      2. No
+    Esc to cancel · Tab to amend
+    """
+
   private func remoteRef(_ pid: Int32, start: String = "t1") -> ProcessRef {
     .remote(
       RemoteProcessRef(
@@ -1159,6 +1187,96 @@ struct RemoteAgentDetectionTests {
     await detect(fixture, screen: .unknown)
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == .unprobedRemote(sshGeneration))
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.detectedAgent == .claude)
+  }
+
+  @Test func anAgentInTmuxIsIdentifiedByTheMappingAndReadFromTheCapture() async {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    // The local screen is the tmux client's: it shows nothing an agent rule matches.
+    fixture.surface.bridge.activeTextForTesting = "[spike] 0:claude*"
+    probe.job = sshJob
+    await detect(fixture)
+    await settle { fixture.source.recipes.count == 1 }
+    await deliver(
+      fixture,
+      tmuxSnapshot(
+        1, pane: fixture.surfaceID, foreground: remoteProcess(200, name: "claude"), screen: Self.blockedClaude))
+    await detect(fixture, screen: .unknown)
+    let pane = fixture.state.surfaceAgentStates[fixture.surfaceID]
+    #expect(pane?.agentProcess == remoteRef(200))
+    #expect(pane?.detectedAgent == .claude)
+    #expect(pane?.state == .blocked)
+    #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.text == Self.blockedClaude)
+  }
+
+  @Test func copyModeKeepsAndAPaneSwitchReleasesTheTmuxAgent() async {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    probe.job = sshJob
+    await detect(fixture)
+    await settle { fixture.source.recipes.count == 1 }
+    let claude = remoteProcess(200, name: "claude")
+    await deliver(fixture, tmuxSnapshot(1, pane: fixture.surfaceID, foreground: claude, screen: Self.blockedClaude))
+    await detect(fixture, screen: .unknown)
+    // Copy mode: the same pane and agent, so nothing changes.
+    await deliver(
+      fixture, tmuxSnapshot(2, pane: fixture.surfaceID, foreground: claude, screen: Self.blockedClaude, inMode: true))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == remoteRef(200))
+    // The client switched to a pane with a shell: two complete snapshots release the agent.
+    for sequence in UInt64(3)...4 {
+      await deliver(
+        fixture,
+        tmuxSnapshot(
+          sequence, pane: fixture.surfaceID, foreground: remoteProcess(300, name: "zsh"), screen: "$ ", paneID: "%1"))
+      await detect(fixture, screen: .unknown)
+    }
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.detectedAgent == nil)
+  }
+
+  @Test func aChangedLocalScreenInTmuxAsksForACapture() async {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    probe.job = sshJob
+    await detect(fixture)
+    await settle { fixture.source.recipes.count == 1 }
+    await deliver(
+      fixture,
+      tmuxSnapshot(
+        1, pane: fixture.surfaceID, foreground: remoteProcess(200, name: "claude"), screen: Self.blockedClaude))
+    fixture.surface.bridge.activeTextForTesting = "frame 1"
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.tmuxLocalScreenHashBySurface[fixture.surfaceID] == "frame 1".hashValue)
+    // Out of tmux, the local screen is the agent's screen again.
+    await deliver(fixture, snapshot(2, pane: fixture.surfaceID, foreground: remoteProcess(200, name: "claude")))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.tmuxLocalScreenHashBySurface[fixture.surfaceID] == nil)
+  }
+
+  @Test func screenChangeRefreshesKeepTheirSpacing() async {
+    var clock: TimeInterval = 100
+    let source = FakeRemoteSource()
+    let tracker = RemotePaneTracker(
+      surfaceID: UUID(), ssh: LocalProcessGeneration(pid: 1, startedAt: Date()),
+      invocation: .supported(SSHConnectionRecipe(destination: "mini")), source: source.source,
+      uptime: { clock }, onSnapshot: {})
+    tracker.start()
+    await settle { source.recipes.count == 1 }
+    let opened = source.refreshes
+    clock = 101
+    tracker.requestRefreshForScreenChange()
+    await settle { source.refreshes == opened + 1 }
+    // Sustained output: a change every 0.1 s asks again only after the spacing.
+    clock = 101.1
+    tracker.requestRefreshForScreenChange()
+    clock = 101.2
+    tracker.requestRefreshForScreenChange()
+    clock = 101.3
+    tracker.requestRefreshForScreenChange()
+    await settle { source.refreshes == opened + 2 }
+    for _ in 0..<50 { await Task.yield() }
+    #expect(source.refreshes == opened + 2)
+    tracker.retire()
   }
 
   @Test func aProbeGapKeepsTheRemoteBinding() async {

@@ -434,6 +434,17 @@ false` and relaunch Prowl, or launch it with `PROWL_REMOTE_AGENT_DETECTION=0`.
   In that case a verified producer's OSC 7501 report still lists the agent, with
   `heuristic` confidence. Only the `ssh` exit releases such an agent. When its producer is
   quiet for 10 s, it becomes stale.
+- **Inside tmux.** When the remote session's foreground is a tmux client, Prowl maps that
+  client to its active pane through the tmux server (never through inherited environment
+  variables). It identifies the agent from that pane's foreground job, and reads the
+  agent's state from the pane's visible screen (`tmux capture-pane`), not from the local
+  screen. The local screen also shows the tmux status line, other panes, and copy mode.
+  tmux drops OSC 7501, so screen rules decide the state there. Copy mode does not change
+  the state. Switching to another pane releases the agent, and switching back shows it
+  again within a few seconds. A second client attached to the same pane shows the same
+  agent in its own Prowl pane. A changing local screen asks for a fresh capture, with at
+  most one probe in flight. Servers whose socket is outside
+  `${TMUX_TMPDIR:-/tmp}/tmux-<uid>/` are not found.
 - **Release.** A probed agent is released after two complete fresh snapshots without it
   (about 2–3 s after it exits), or at once when the `ssh` exits.
 - **Limits.** A remote agent cannot be a `prowl agents dispatch` target that needs a

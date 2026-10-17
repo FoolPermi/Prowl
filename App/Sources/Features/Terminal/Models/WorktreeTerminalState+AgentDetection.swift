@@ -106,6 +106,7 @@ extension WorktreeTerminalState {
     agentDetectionPresenceBySurface.removeValue(forKey: surfaceID)
     lastAgentDetectionDiagnosticsBySurface.removeValue(forKey: surfaceID)
     lastAgentScreenScanBySurface.removeValue(forKey: surfaceID)
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
     if surfaceAgentStates[surfaceID]?.detectedAgent == nil {
       surfaceAgentStates.removeValue(forKey: surfaceID)
     }
@@ -267,7 +268,19 @@ extension WorktreeTerminalState {
         lastScan?.detection ?? AgentScreenDetection(state: .unknown, reason: .noRuleMatched)
       )
     }
-    let activeText = view.bridge.readActiveText() ?? ""
+    let localText = view.bridge.readActiveText() ?? ""
+    if let tmuxScreen = remotePaneTrackers[surfaceID]?.tmuxScreen {
+      // Inside tmux the local screen is the tmux client's (status line, other panes, copy
+      // mode); the agent's own screen is the capture. A local change still means the
+      // capture is likely stale, so it asks for a probe now.
+      let localHash = localText.hashValue
+      if tmuxLocalScreenHashBySurface.updateValue(localHash, forKey: surfaceID) != localHash {
+        remotePaneTrackers[surfaceID]?.requestRefreshForScreenChange()
+      }
+      return (tmuxScreen, cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: tmuxScreen))
+    }
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
+    let activeText = localText
     // Reuse the previous scan while the screen and detected agent are unchanged.
     // A live-but-idle agent is polled every 300 ms and `detectState` re-splits,
     // lowercases, and scans the whole screen each time; skipping that for
@@ -665,6 +678,7 @@ extension WorktreeTerminalState {
     agentDetectionCoordinators.removeValue(forKey: surfaceID)?.invalidate()
     surfaceAgentStates[surfaceID] = PaneAgentState(lastChangedAt: Date())
     lastAgentScreenScanBySurface.removeValue(forKey: surfaceID)
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
     let hadPublishedEntry = lastEmittedAgentEntriesBySurface.removeValue(forKey: surfaceID) != nil
     // The launch identity lives exactly as long as the launched agent
     // (docs-ai 053/006): once the pane is a bare shell again, a manually
@@ -870,6 +884,7 @@ extension WorktreeTerminalState {
     agentDetectionPresenceBySurface.removeValue(forKey: surfaceId)
     lastAgentDetectionDiagnosticsBySurface.removeValue(forKey: surfaceId)
     lastAgentScreenScanBySurface.removeValue(forKey: surfaceId)
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceId)
     let hadPublishedEntry = lastEmittedAgentEntriesBySurface.removeValue(forKey: surfaceId) != nil
     lastAgentEntryEmitAtBySurface.removeValue(forKey: surfaceId)
     pendingAgentEntryBySurface.removeValue(forKey: surfaceId)
@@ -906,6 +921,7 @@ extension WorktreeTerminalState {
     agentDetectionPresenceBySurface.removeAll()
     lastAgentDetectionDiagnosticsBySurface.removeAll()
     lastAgentScreenScanBySurface.removeAll()
+    tmuxLocalScreenHashBySurface.removeAll()
     lastEmittedAgentEntriesBySurface.removeAll()
     lastAgentEntryEmitAtBySurface.removeAll()
     pendingAgentEntryBySurface.removeAll()

@@ -273,6 +273,9 @@ final class WorktreeTerminalState {
   /// drives the UI.
   @ObservationIgnored
   var lastAgentScreenScanBySurface: [UUID: AgentScreenScan] = [:]
+  /// The local screen of a pane inside a remote tmux, as a hash: a change asks for a fresh
+  /// capture (docs-ai 082, S5).
+  @ObservationIgnored var tmuxLocalScreenHashBySurface: [UUID: Int] = [:]
   /// Last `ActiveAgentEntry` emitted per surface. `detectAgentState` re-emits
   /// whenever any `PaneAgentState` field changes, including internal
   /// bookkeeping (raw-state oscillation, session miss streaks, presence

@@ -14,7 +14,8 @@ sections below record what shipped and what differs from the plan.
 | 2026-10-18 | S3c: degraded OSC-only binding for panes the host cannot map or probe (behind the flag). Review Loop: 4 rounds, then two follow-ups, clean | #928 |
 | 2026-10-18 | S4a: host label and connection health on Active Agents rows, `remote` object in `prowl agents --json`, docs (behind the flag). Review Loop clean after 2 rounds | #930 |
 | 2026-10-18 | S4b: pane and tab host label, ssh-ended marker; remote detection on by default. Review Loop: 3 rounds plus a 2-round follow-up, clean | #931 |
-| 2026-10-18 | S5a: probe format 2 maps a session's tmux client to its active pane, with the pane's foreground job and visible screen | #932 |
+| 2026-10-18 | S5a: probe format 2 maps a session's tmux client to its active pane, with the pane's foreground job and visible screen. Review Loop clean after 3 rounds | #932 |
+| 2026-10-18 | S5b: inside tmux, identity from the mapping and state from the capture | S5b PR |
 
 ## S1 — Typed process references
 
@@ -445,4 +446,31 @@ identity from the mapping and state from the screen.
   - A program in a `display-popup` is not in the pane's foreground job.
   - `list-clients` reports the window's active pane. A client attached with
     `-f active-pane` can show another pane (not tested).
+
+## S5b — tmux identity and capture state
+
+- **Identity.** `RemotePaneTracker.correlatedJob` takes the job from the session's tmux
+  pane when the session shows a tmux client. When that pane's job is empty, there is no
+  agent; the client itself is never classified.
+- **Screen.** The tracker keeps `tmuxPane` from the latest snapshot that mapped the
+  session. A partial snapshot that lost the tmux records is a gap and keeps it.
+  `Observation.tmuxScreen` carries the capture while the pane is `correlated`.
+  `pollScreen` reads that text instead of the local screen, with the same per-surface
+  scan memo. Staleness follows `confirmedAt`, which comes from the same snapshot.
+- **Wakes.** Output does not wake the detection loop, so the tick compares a hash of the
+  local screen (`tmuxLocalScreenHashBySurface`). When it changes, the tick calls
+  `requestRefreshForScreenChange()`, which requests at most one probe every
+  `screenChangeSpacing` (0.25 s). The owner coalesces the rest, so at most one probe is in
+  flight.
+- **Test seam.** `GhosttySurfaceBridge.activeTextForTesting`.
+- **Measured** (macOS 26.5, tmux 3.7c, Claude 2.1.302):
+  - Claude in `tmux -L s5e2e` appeared after 0.35 s (`claude.idleComposer` from the
+    capture); a prompt reached working at 0.44 s (`claude.spinner`) and done at 3.04 s.
+  - Copy mode during work stayed working.
+  - Sampled every 0.1 s for 4 s: at most 1 concurrent probe, with a probe running in
+    7 of 40 samples.
+  - A split with the other pane active released the agent after 2.24 s; `select-pane`
+    back showed it after 3.79 s. With no agent bound, the idle cadence applies.
+  - A second Prowl pane attached as another client showed the same agent, `correlated`.
+  - Debian trixie (tmux 3.5a): Claude in tmux was identified after 2.45 s.
 
