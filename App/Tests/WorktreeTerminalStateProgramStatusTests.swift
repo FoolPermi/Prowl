@@ -216,10 +216,8 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.programStatusStoresBySurface[fixture.surfaceID]?.root?.state == .working)
   }
 
-  /// The production table (docs-ai 079 slices 3 and 4, 079.006): a Claude Code root, a Pi
-  /// root, and an Oh My Pi root decide the published state and delegate the schedule; an
-  /// unverified agent's root still publishes nothing.
-  @Test func productionTableVerifiesClaudeCodePiAndOMP() async {
+  /// Verified roots decide the published state and delegate the schedule.
+  @Test func productionTableVerifiesKnownProducers() async {
     let claudeProbe = Probe()
     let claude = makeFixture(support: nil, probe: claudeProbe)
     await bind(claude, probe: claudeProbe)
@@ -283,13 +281,19 @@ struct WorktreeTerminalStateProgramStatusTests {
       agent: .codex, text: "", detection: AgentScreenDetection(state: .idle, reason: .legacyDetector))
     #expect(await detect(codex))
     #expect(codex.state.surfaceAgentStates[codex.surfaceID]?.detectedAgent == .codex)
-    let before = codex.state.surfaceAgentStates[codex.surfaceID]
 
     codex.state.handleProgramStatus(report(.working, app: "codex"), surfaceID: codex.surfaceID)
 
-    #expect(codex.state.surfaceAgentStates[codex.surfaceID] == before)
-    #expect(codex.state.agentDetectionCoordinators[codex.surfaceID]?.isDelegated == false)
-    #expect(codex.state.nextScheduleAfterTick(surfaceID: codex.surfaceID, hasAgent: true) == .active)
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID]?.decision?.reason.identifier == "osc.working")
+    #expect(codex.state.agentDetectionCoordinators[codex.surfaceID]?.isDelegated == true)
+    #expect(codex.state.nextScheduleAfterTick(surfaceID: codex.surfaceID, hasAgent: true) == .delegated)
+
+    codex.state.handleProgramStatus(report(.blocked, app: "codex"), surfaceID: codex.surfaceID)
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID]?.state == .blocked)
+    #expect(
+      codex.state.surfaceAgentStates[codex.surfaceID]?.decision?.reason.identifier == "osc.blocked.unspecified")
+    codex.state.handleProgramStatus(report(.idle, app: "codex"), surfaceID: codex.surfaceID)
+    #expect(codex.state.surfaceAgentStates[codex.surfaceID]?.displayState == .idle)
   }
 
   @Test func withdrawalPublishesNothingUntilAnObserveThatStartedAfterIt() async {
