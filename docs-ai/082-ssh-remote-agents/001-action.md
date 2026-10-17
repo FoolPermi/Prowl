@@ -15,7 +15,7 @@ sections below record what shipped and what differs from the plan.
 | 2026-10-18 | S4a: host label and connection health on Active Agents rows, `remote` object in `prowl agents --json`, docs (behind the flag). Review Loop clean after 2 rounds | #930 |
 | 2026-10-18 | S4b: pane and tab host label, ssh-ended marker; remote detection on by default. Review Loop: 3 rounds plus a 2-round follow-up, clean | #931 |
 | 2026-10-18 | S5a: probe format 2 maps a session's tmux client to its active pane, with the pane's foreground job and visible screen. Review Loop clean after 3 rounds | #932 |
-| 2026-10-18 | S5b: inside tmux, identity from the mapping and state from the capture | #933 |
+| 2026-10-18 | S5b: inside tmux, identity from the mapping and state from the capture. Review Loop clean after 3 rounds. L0 complete | #933 |
 
 ## S1 — Typed process references
 
@@ -494,4 +494,11 @@ identity from the mapping and state from the screen.
     back showed it after 3.79 s. With no agent bound, the idle cadence applies.
   - A second Prowl pane attached as another client showed the same agent, `correlated`.
   - Debian trixie (tmux 3.5a): Claude in tmux was identified after 2.45 s.
+- **Final E2E on the reviewed HEAD** (mini, tmux 3.7c):
+  - Claude appeared after 0.68 s and settled on `claude.idleComposer`.
+  - A prompt read as `claude.spinner`; copy mode during the work stayed working; done
+    came from the capture.
+  - A detach during work kept it working (never idle from the remote shell) until the
+    release at 0.56 s. Reattaching showed it working again after 0.58 s.
+  - `state_known` stayed true throughout.
 
