@@ -123,7 +123,7 @@ extension WorktreeTerminalState {
 
     let identified = job.flatMap { identifyAgentInJob($0) }
     let probedAgent = identified?.agent
-    retireLocalLaunchContextForRemoteLaunch(identified: identified, surfaceID: surfaceID)
+    let originFence = applyAgentOrigin(identified, surfaceID: surfaceID, now: now)
 
     var presence = agentDetectionPresenceBySurface[surfaceID] ?? AgentDetectionPresence()
     let agent = presence.update(detectedAgent: probedAgent, releaseOnMiss: finished != nil)
@@ -149,6 +149,7 @@ extension WorktreeTerminalState {
     let capturedAt = ProcessInfo.processInfo.systemUptime
     let coordinator = agentDetectionCoordinators[surfaceID] ?? makeAgentDetectionCoordinator(surfaceID: surfaceID)
     agentDetectionCoordinators[surfaceID] = coordinator
+    coordinator.programStatusOriginFence = originFence
     let process = Self.processGeneration(identified)
     // The tick is delegated only while the schedule says so (a key press puts one full
     // tick back on the active schedule and keeps it there for the settle window) and the
@@ -273,6 +274,13 @@ extension WorktreeTerminalState {
   private func retireLocalLaunchContextForRemoteLaunch(identified: IdentifiedAgentProcess?, surfaceID: UUID) {
     guard let identified, identified.launchProcess.origin != .local else { return }
     launchProfilesBySurface.removeValue(forKey: surfaceID)
+  }
+
+  /// Origin bookkeeping for one probe: retires launch context a remote launch cannot
+  /// wear and returns the surface's OSC origin fence.
+  private func applyAgentOrigin(_ identified: IdentifiedAgentProcess?, surfaceID: UUID, now: Date) -> Date? {
+    retireLocalLaunchContextForRemoteLaunch(identified: identified, surfaceID: surfaceID)
+    return noteAgentOrigin(identified, surfaceID: surfaceID, now: now)
   }
 
   /// Resolves the screen detection for `text`, reusing `cache` when it already
@@ -633,6 +641,7 @@ extension WorktreeTerminalState {
     pendingCommandFinishedBySurface.removeAll()
     programStatusStoresBySurface.removeAll()
     programStatusUnmappedAppsLoggedBySurface.removeAll()
+    programStatusOriginBySurface.removeAll()
     agentDetectionSchedules.removeAll()
     surfaceAgentStates.removeAll()
     agentDetectionPresenceBySurface.removeAll()

@@ -207,10 +207,16 @@ final class AgentDetectionCoordinator {
     return hadAuthority ? .withdrawn : .none
   }
 
-  /// The arrival-time fence for the bound generation. A remote generation has no local
-  /// start time; until the remote binding supplies its fence, no record counts for it.
+  /// When the pane's agent origin last changed (the owner keeps it per surface). Records
+  /// that arrived before it belong to the departed origin.
+  var programStatusOriginFence: Date?
+
+  /// The arrival-time fence for the bound generation: its start, or a later origin change.
+  /// A remote generation has no local start time; until the remote binding supplies its
+  /// fence, no record counts for it.
   private var programStatusNotBefore: Date? {
-    process?.localGeneration?.startedAt
+    guard let startedAt = process?.localGeneration?.startedAt else { return nil }
+    return programStatusOriginFence.map { max($0, startedAt) } ?? startedAt
   }
 
   private var isVerified: Bool {

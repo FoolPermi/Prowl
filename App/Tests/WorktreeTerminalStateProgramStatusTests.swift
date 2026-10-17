@@ -550,6 +550,39 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(pane?.decision?.reason.identifier != "osc.working")
   }
 
+  @Test func recordsFromADepartedOriginNeverDecideForTheReturningLocalAgent() async throws {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    await bind(fixture, probe: probe)
+    // The local agent is suspended; the same agent runs on a remote host and reports.
+    let remote = ProcessRef.remote(
+      RemoteProcessRef(
+        connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), bootID: "boot", pid: 7,
+        startToken: "t1"))
+    probe.job = ForegroundJob(
+      processGroupID: 7,
+      processes: [ForegroundProcess(ref: remote, parentPID: 1, name: "claude", argv0: "claude", cmdline: "claude")])
+    #expect(await detect(fixture))
+    fixture.state.handleProgramStatus(report(.done), surfaceID: fixture.surfaceID)
+    fixture.state.handleProgramStatus(report(.blocked, id: "child"), surfaceID: fixture.surfaceID)
+
+    // Back to the original local process, whose start predates the remote report.
+    probe.job = claudeJob()
+    fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] = WorktreeTerminalState.AgentScreenScan(
+      agent: .claude, text: "", detection: AgentScreenDetection(state: .working, reason: .legacyDetector))
+    #expect(await detect(fixture))
+    let coordinator = try #require(fixture.state.agentDetectionCoordinators[fixture.surfaceID])
+    #expect(!coordinator.isDelegated)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.decision?.reason.identifier != "osc.done")
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
+
+    // A report from the local process after the return decides again; the remote
+    // blocked child does not veto it.
+    fixture.state.handleProgramStatus(report(.idle), surfaceID: fixture.surfaceID)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.decision?.reason.identifier == "osc.idle")
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .idle)
+  }
+
   @Test func remoteLaunchNeverWearsALocalProfile() async throws {
     // The Profile's agent never appeared; the user ran `ssh host claude` in its pane.
     let probe = Probe()

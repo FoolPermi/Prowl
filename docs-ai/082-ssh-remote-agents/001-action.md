@@ -40,3 +40,10 @@ sections below record what shipped and what differs from the plan.
     remote drops the pane's Profile name and config root.
   - Managed hooks: when the pane's agent is remote, the local managed hook is revoked and
     the evidence epoch rotates.
+  - OSC records: the surface keeps the origin of its last identified agent and the
+    moment that origin replaced another one, as long as its record store
+    (`programStatusOriginBySurface`). The coordinator fence is the later of the
+    generation's start and that moment, so records that arrived on a departed origin never
+    decide for the returning agent, even after the coordinator is rebuilt (review round 1).
+    Reports between the change and the probe that sees it are left out too; the screen
+    decides until the next report.

@@ -208,6 +208,11 @@ final class WorktreeTerminalState {
   /// not to a process: a store outlives `forgetSurface` while its surface is retained
   /// for undo and is dropped when the surface is freed or closed for good.
   @ObservationIgnored var programStatusStoresBySurface: [UUID: ProgramStatusRecordStore] = [:]
+  /// The origin of the last agent identified on each surface and when it began, kept as
+  /// long as the surface's record store. A store record that arrived before an origin
+  /// change came from the departed origin, so it never counts for the current agent
+  /// (docs-ai 082), even after the coordinator is rebuilt.
+  @ObservationIgnored var programStatusOriginBySurface: [UUID: ProgramStatusOrigin] = [:]
   /// The sleeping half of each detection loop; `wakeAgentDetection` cancels it so a
   /// report, a key press, or a finished command gets an immediate probe.
   @ObservationIgnored var agentDetectionSleepersBySurface: [UUID: AgentDetectionSleeper] = [:]
