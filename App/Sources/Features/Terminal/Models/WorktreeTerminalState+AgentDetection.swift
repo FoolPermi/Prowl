@@ -123,6 +123,7 @@ extension WorktreeTerminalState {
 
     let identified = job.flatMap { identifyAgentInJob($0) }
     let probedAgent = identified?.agent
+    retireLocalLaunchContextForRemoteLaunch(identified: identified, surfaceID: surfaceID)
 
     var presence = agentDetectionPresenceBySurface[surfaceID] ?? AgentDetectionPresence()
     let agent = presence.update(detectedAgent: probedAgent, releaseOnMiss: finished != nil)
@@ -208,8 +209,8 @@ extension WorktreeTerminalState {
       detectedAgent: agent,
       // Presence holds keep the last known pid so a probe gap does not flap
       // the session to nil and back (the resolver re-binds on the next hit).
-      agentProcessID: identified?.process.pid ?? previous.agentProcessID,
-      launchProcessID: resolvedLaunchProcessID(identified: identified, previous: previous),
+      agentProcess: identified?.process.ref ?? previous.agentProcess,
+      launchProcess: resolvedLaunchProcess(identified: identified, previous: previous),
       launchObservation: launchObservation,
       session: session,
       iconLookupToken: iconLookupToken,
@@ -256,11 +257,22 @@ extension WorktreeTerminalState {
   }
 
   private static func processGeneration(_ identified: IdentifiedAgentProcess?) -> AgentProcessGeneration? {
-    identified.flatMap { identified in
-      ProcessDetection.processStartDate(pid: identified.process.pid).map {
-        AgentProcessGeneration(pid: identified.process.pid, startedAt: $0)
-      }
+    switch identified?.process.ref {
+    case .local(let pid):
+      ProcessDetection.processStartDate(pid: pid).map { .local(pid: pid, startedAt: $0) }
+    case .remote(let remote):
+      .remote(remote)
+    case nil:
+      nil
     }
+  }
+
+  /// Launch context (the Profile and its config root) belongs to the launch process and
+  /// survives an engine replacement. A Profile launch runs on this Mac, so an agent whose
+  /// launch is on another origin is a different launch and must not wear it.
+  private func retireLocalLaunchContextForRemoteLaunch(identified: IdentifiedAgentProcess?, surfaceID: UUID) {
+    guard let identified, identified.launchProcess.origin != .local else { return }
+    launchProfilesBySurface.removeValue(forKey: surfaceID)
   }
 
   /// Resolves the screen detection for `text`, reusing `cache` when it already
@@ -301,16 +313,23 @@ extension WorktreeTerminalState {
     return detection
   }
 
-  private func resolvedLaunchProcessID(
+  private func resolvedLaunchProcess(
     identified: IdentifiedAgentProcess?,
     previous: PaneAgentState
-  ) -> pid_t? {
-    PaneAgentState.retainedLaunchProcessID(
-      identifiedLaunchProcessID: identified?.launchProcessID,
-      identifiedProcessID: identified?.process.pid,
+  ) -> ProcessRef? {
+    PaneAgentState.retainedLaunchProcess(
+      identifiedLaunch: identified?.launchProcess,
+      identifiedProcess: identified?.process.ref,
       previous: previous,
       isLiveAncestor: Self.processIsLiveAncestor
     )
+  }
+
+  /// The local process tree is the only ancestry a pane can walk; a remote pair is
+  /// never reported as a live ancestor.
+  nonisolated static func processIsLiveAncestor(_ ancestor: ProcessRef, of descendant: ProcessRef) -> Bool {
+    guard let ancestor = ancestor.localPID, let descendant = descendant.localPID else { return false }
+    return processIsLiveAncestor(ancestor, of: descendant)
   }
 
   /// Walk the live process tree upward from `descendant` (bounded), reporting whether it still
@@ -342,7 +361,7 @@ extension WorktreeTerminalState {
     return PaneAgentState.retainedLaunchObservation(
       observed: observed,
       previous: previous,
-      identifiedPID: identified?.process.pid
+      identified: identified?.process.ref
     )
   }
 
@@ -354,9 +373,10 @@ extension WorktreeTerminalState {
     context: (surfaceID: UUID, configRoot: URL?)
   ) async -> (session: AgentSession?, missStreak: Int) {
     var resolution = AgentSessionResolution(session: nil, isFresh: false)
-    if let identified {
+    // Session stores are local files; a remote process has none that this Mac can read.
+    if let local = identified?.local {
       resolution = await AgentSessionResolver.shared.resolve(
-        identified: identified,
+        identified: local,
         workingDirectory: workingDirectory,
         activeText: activeText,
         configRoot: context.configRoot,
@@ -366,7 +386,7 @@ extension WorktreeTerminalState {
     return PaneAgentState.retainedSession(
       resolution: resolution,
       previous: previous,
-      identifiedPID: identified?.process.pid
+      identified: identified?.process.ref
     )
   }
 

@@ -186,7 +186,7 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.tabAgentBusyById[fixture.tabID] == true)
     #expect(emitted.map(\.displayState) == [.working])
     // Pid, session, and launch metadata are merged, not replaced.
-    #expect(pane?.agentProcessID == getpid())
+    #expect(pane?.agentProcess == .local(getpid()))
   }
 
   @Test func doneAndErrorEarnTheBadgeButIdleDoesNot() async {
@@ -440,9 +440,11 @@ struct WorktreeTerminalStateProgramStatusTests {
     // The screen was read (the memo holds the live frame) and the rebound coordinator
     // re-derived the evidence against the new generation.
     #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.text == "")
-    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcessID == engine.processIdentifier)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == .local(engine.processIdentifier))
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.decision?.reason.identifier == "osc.working")
-    #expect(fixture.state.agentDetectionCoordinators[fixture.surfaceID]?.boundProcess?.pid == engine.processIdentifier)
+    #expect(
+      fixture.state.agentDetectionCoordinators[fixture.surfaceID]?.boundProcess?.localGeneration?.pid
+        == engine.processIdentifier)
   }
 
   @Test func nextScheduleFollowsDelegation() {
@@ -511,6 +513,66 @@ struct WorktreeTerminalStateProgramStatusTests {
     #expect(fixture.state.programStatusStoresBySurface[fixture.surfaceID]?.root?.state == .working)
   }
 
+  @Test func originChangeRetiresTheLaunchContextAndTheLocalBinding() async throws {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    var emitted: [ActiveAgentEntry] = []
+    fixture.state.onAgentEntryChanged = { emitted.append($0) }
+    await bind(fixture, probe: probe)
+    fixture.state.launchProfilesBySurface[fixture.surfaceID] = WorktreeTerminalState.SurfaceLaunchProfile(
+      profileID: UUID(), name: "Claude · Bound", runtime: .claude, dedicatedHome: nil)
+    fixture.state.handleProgramStatus(report(.working), surfaceID: fixture.surfaceID)
+
+    // Inside the presence hold the same agent appears on a remote host with the same pid.
+    let remote = ProcessRef.remote(
+      RemoteProcessRef(
+        connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), bootID: "boot", pid: getpid(),
+        startToken: "t1"))
+    probe.job = ForegroundJob(
+      processGroupID: getpid(),
+      processes: [ForegroundProcess(ref: remote, parentPID: 1, name: "claude", argv0: "claude", cmdline: "claude")])
+    emitted.removeAll()
+    #expect(await detect(fixture))
+
+    let pane = fixture.state.surfaceAgentStates[fixture.surfaceID]
+    #expect(pane?.agentProcess == remote)
+    #expect(pane?.launchProcess == remote)
+    #expect(fixture.state.launchProfilesBySurface[fixture.surfaceID] == nil)
+    #expect(emitted.last?.launchProfileName == nil)
+    // The local root record does not count for the remote generation.
+    #expect(
+      fixture.state.agentDetectionCoordinators[fixture.surfaceID]?.boundProcess
+        == .remote(
+          RemoteProcessRef(
+            connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), bootID: "boot", pid: getpid(),
+            startToken: "t1")))
+    #expect(fixture.state.agentDetectionCoordinators[fixture.surfaceID]?.isDelegated == false)
+    #expect(pane?.decision?.reason.identifier != "osc.working")
+  }
+
+  @Test func remoteLaunchNeverWearsALocalProfile() async throws {
+    // The Profile's agent never appeared; the user ran `ssh host claude` in its pane.
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    fixture.state.launchProfilesBySurface[fixture.surfaceID] = WorktreeTerminalState.SurfaceLaunchProfile(
+      profileID: UUID(), name: "Claude · Bound", runtime: .claude, dedicatedHome: nil)
+    let remote = ProcessRef.remote(
+      RemoteProcessRef(
+        connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), bootID: "boot", pid: 7,
+        startToken: "t1"))
+    probe.job = ForegroundJob(
+      processGroupID: 7,
+      processes: [ForegroundProcess(ref: remote, parentPID: 1, name: "claude", argv0: "claude", cmdline: "claude")])
+    fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID] = WorktreeTerminalState.AgentScreenScan(
+      agent: .claude, text: "", detection: AgentScreenDetection(state: .idle, reason: .legacyDetector))
+    var emitted: [ActiveAgentEntry] = []
+    fixture.state.onAgentEntryChanged = { emitted.append($0) }
+    #expect(await detect(fixture))
+
+    #expect(fixture.state.launchProfilesBySurface[fixture.surfaceID] == nil)
+    #expect(emitted.last?.launchProfileName == nil)
+  }
+
   @Test func successorAfterTheFinishedOwnerRetiresTheLaunchContextAndKeepsItsOwnRecords() async throws {
     let probe = Probe()
     let fixture = makeFixture(probe: probe)
@@ -535,7 +597,7 @@ struct WorktreeTerminalStateProgramStatusTests {
 
     #expect(removed == [fixture.surfaceID])
     #expect(fixture.state.launchProfilesBySurface[fixture.surfaceID] == nil)
-    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcessID == successor)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == .local(successor))
     #expect(emitted.last?.launchProfileName == nil)
     // The successor's root arrived after the D and survived the scoped cleanup, so it
     // drives the successor's decision without another report.
@@ -598,8 +660,8 @@ struct WorktreeTerminalStateProgramStatusTests {
     let launcher = IdentifiedAgentProcess(
       agent: .claude, name: "claude",
       process: ForegroundProcess(pid: 101, parentProcessID: 100, name: "claude", argv0: "claude", cmdline: nil),
-      launchProcessID: 100)
-    let sameOwner = PaneAgentState(detectedAgent: .claude, agentProcessID: 101, launchProcessID: 100)
+      launchProcess: .local(100))
+    let sameOwner = PaneAgentState(detectedAgent: .claude, agentProcess: .local(101), launchProcess: .local(100))
     #expect(
       WorktreeTerminalState.commandFinishedOutcome(
         identified: launcher, previous: sameOwner, isLiveAncestor: { _, _ in false })
@@ -608,11 +670,11 @@ struct WorktreeTerminalStateProgramStatusTests {
     let replaced = IdentifiedAgentProcess(
       agent: .claude, name: "claude",
       process: ForegroundProcess(pid: 102, parentProcessID: 102, name: "claude", argv0: "claude", cmdline: nil),
-      launchProcessID: 102)
+      launchProcess: .local(102))
     #expect(
       WorktreeTerminalState.commandFinishedOutcome(
         identified: replaced, previous: sameOwner,
-        isLiveAncestor: { ancestor, descendant in ancestor == 100 && descendant == 102 })
+        isLiveAncestor: { ancestor, descendant in ancestor == .local(100) && descendant == .local(102) })
         == .sameOwner)
     // A successor launch: nothing links it to the finished owner.
     #expect(

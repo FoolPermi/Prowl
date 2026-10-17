@@ -25,17 +25,17 @@ extension WorktreeTerminalState {
   static func commandFinishedOutcome(
     identified: IdentifiedAgentProcess?,
     previous: PaneAgentState,
-    isLiveAncestor: (_ ancestor: pid_t, _ descendant: pid_t) -> Bool
+    isLiveAncestor: (_ ancestor: ProcessRef, _ descendant: ProcessRef) -> Bool
   ) -> CommandFinishedOutcome {
     guard let identified else { return .released }
-    guard previous.detectedAgent != nil, previous.launchProcessID != nil else { return .successor }
-    let launch = PaneAgentState.retainedLaunchProcessID(
-      identifiedLaunchProcessID: identified.launchProcessID,
-      identifiedProcessID: identified.process.pid,
+    guard previous.detectedAgent != nil, previous.launchProcess != nil else { return .successor }
+    let launch = PaneAgentState.retainedLaunchProcess(
+      identifiedLaunch: identified.launchProcess,
+      identifiedProcess: identified.process.ref,
       previous: previous,
       isLiveAncestor: isLiveAncestor
     )
-    return launch == previous.launchProcessID ? .sameOwner : .successor
+    return launch == previous.launchProcess ? .sameOwner : .successor
   }
 
   /// The schedule after one tick: a verified producer's eligible root slows the loop
