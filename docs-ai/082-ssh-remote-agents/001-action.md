@@ -400,6 +400,13 @@ identity from the mapping and state from the screen.
   - Linux names the client `tmux: client` (macOS: `tmux`).
   - The heredoc that feeds the client loop keeps the counters in the main shell. A
     `printf | while` pipeline would run them in a subshell.
+  - A capture that fails (the pane closed after `list-clients`) prints no `C` record, so
+    the snapshot stays partial; a blank screen still has its newlines
+    (`screen_record`, review round 1).
+  - On Linux, the probe runs the client through `/proc/<pid>/exe`. After an upgrade the
+    link's target reads `… (deleted)`, but the link still runs the client's own
+    protocol-compatible binary (review round 1; reproduced in the container by
+    deleting a copied binary).
 - **Measured.** On macOS 26.5 with tmux 3.7c and Debian trixie with tmux 3.5a:
   - The plain mapping shows Claude (`comm` `2.1.302`) or `sleep 600` in pane `%0`.
   - Copy mode sets `in mode` to 1 and keeps the identity.

@@ -189,6 +189,39 @@ struct RemoteProbeParserTests {
     #expect(!isComplete(parse([client, member, "C\t-\t0\t", "END\t1\t1\t1\t0"])))
   }
 
+  /// Runs the probe's `screen_record` function against a stand-in `tmux` that runs `body`.
+  private func screenRecord(tmux body: String) throws -> String {
+    let script = RemoteProbeScript.text
+    let start = try #require(script.range(of: "screen_record() {\n"))
+    let end = try #require(script.range(of: "\n}\n", range: start.upperBound..<script.endIndex))
+    let function = String(script[start.lowerBound..<end.upperBound])
+    let directory = FileManager.default.temporaryDirectory.appending(path: "prowl-probe-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let tmux = directory.appending(path: "tmux")
+    try Data("#!/bin/sh\n\(body)\n".utf8).write(to: tmux)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmux.path)
+    let process = Process()
+    process.executableURL = URL(filePath: "/bin/sh")
+    process.arguments = ["-c", "cap=8\n\(function)screen_record \"$0\" sock %3 PANE", tmux.path]
+    let output = Pipe()
+    process.standardOutput = output
+    try process.run()
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    return String(bytes: data, encoding: .utf8) ?? ""
+  }
+
+  @Test func aFailedCaptureLeavesNoScreenRecord() throws {
+    #expect(try screenRecord(tmux: "printf 'a\\tb%%\\n'") == "C\tPANE\t0\ta%09b%25%0A\n")
+    // A blank screen is still a screen.
+    #expect(try screenRecord(tmux: "printf '\\n\\n'") == "C\tPANE\t0\t%0A%0A\n")
+    // A pane that closed after `list-clients`: no record, so the snapshot is incomplete.
+    #expect(try screenRecord(tmux: "echo 'can\\'t find pane: %3' >&2; exit 1") == "")
+    // Past the cap (8 bytes here), the text is cut and marked.
+    #expect(try screenRecord(tmux: "printf '0123456789'") == "C\tPANE\t1\t01234567\n")
+  }
+
   private func isComplete(_ result: RemoteProbeParser.Result) -> Bool {
     if case .complete = result { return true }
     return false

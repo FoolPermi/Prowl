@@ -101,7 +101,9 @@ nonisolated enum RemoteProbeScript {
           comm=$(printf '%s\n' "$table" | awk -v m="$m" '$1 == m { sub(/^[^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+ /, ""); print }')
           case "$comm" in
             tmux | "tmux: client")
-              clients="$clients$apid ${pane:--} $m $(readlink "/proc/$m/exe" 2>/dev/null)
+              # The proc link, not its target: after an upgrade the target reads `… (deleted)`,
+              # while the link still runs the client's own (protocol-compatible) binary.
+              clients="$clients$apid ${pane:--} $m /proc/$m/exe
     "
               ;;
           esac
@@ -219,6 +221,27 @@ nonisolated enum RemoteProbeScript {
       }
     fi
 
+    # screen_record <tmux> <socket> <tmux pane> <pane>: the C record of a pane's visible screen.
+    # A failed capture prints nothing, so the snapshot stays incomplete; a blank screen
+    # still prints its newlines.
+    screen_record() {
+      # The x keeps a trailing newline and marks a capture that succeeded.
+      text=$("$1" -S "$2" capture-pane -p -t "$3" 2>/dev/null && printf x)
+      [ -n "$text" ] || return 0
+      text=${text%x}
+      truncated=0
+      if [ "$(printf '%s' "$text" | wc -c)" -gt "$cap" ]; then
+        truncated=1
+        text=$(printf '%s' "$text" | head -c "$cap"; printf x)
+        text=${text%x}
+      fi
+      printf '%s' "$text" | PROWL_PANE="$4" awk -v t="$truncated" '
+        BEGIN { RS = "\001"; ORS = "" }
+        { s = $0; gsub(/%/, "%25", s); gsub(/\t/, "%09", s); gsub(/\n/, "%0A", s); gsub(/\r/, "%0D", s)
+          printf "C\t%s\t%s\t%s\n", ENVIRON["PROWL_PANE"], t, s; done = 1 }
+        END { if (!done) printf "C\t%s\t%s\t\n", ENVIRON["PROWL_PANE"], t }'
+    }
+
     # tmux: map each client in a session's foreground to its active pane through the
     # server it talks to (the inherited environment names the first client, so it is
     # never used), then report that pane's foreground job and visible screen.
@@ -254,21 +277,7 @@ nonisolated enum RemoteProbeScript {
         render Y "$(printf '%s\n' "$job" | awk -v a="$pane" -v g="$fg" -v t="${ptty#/dev/}" '{ print a, g, t, $1 }')"
       fi
       ycount=$((ycount + $(printf '%s\n' "$job" | awk 'NF { n++ } END { print n + 0 }')))
-      # The x keeps a trailing newline; one byte past the cap marks the text truncated.
-      screen=$("$exe" -S "$sock" capture-pane -p -t "$tpane" 2>/dev/null | head -c $((cap + 1)); printf x)
-      screen=${screen%x}
-      truncated=0
-      if [ "$(printf '%s' "$screen" | wc -c)" -gt "$cap" ]; then
-        truncated=1
-        screen=$(printf '%s' "$screen" | head -c "$cap"; printf x)
-        screen=${screen%x}
-      fi
-      printf '%s' "$screen" | PROWL_PANE="$pane" awk -v t="$truncated" '
-        BEGIN { RS = "\001"; ORS = "" }
-        { s = $0; gsub(/%/, "%25", s); gsub(/\t/, "%09", s); gsub(/\n/, "%0A", s); gsub(/\r/, "%0D", s)
-          p = ENVIRON["PROWL_PANE"]; gsub(/%/, "%25", p); gsub(/\t/, "%09", p)
-          printf "C\t%s\t%s\t%s\n", p, t, s; done = 1 }
-        END { if (!done) printf "C\t%s\t%s\t\n", ENVIRON["PROWL_PANE"], t }'
+      screen_record "$exe" "$sock" "$tpane" "$pane"
     done <<EOF
     $clients
     EOF
