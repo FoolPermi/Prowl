@@ -227,7 +227,7 @@ private struct CommandPaletteCard: View {
       }
     }
     .frame(maxWidth: 500)
-    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
+    .prowlGlass(RoundedRectangle(cornerRadius: 14))
     .shadow(radius: 32, x: 0, y: 12)
     .padding(Self.padding)
   }

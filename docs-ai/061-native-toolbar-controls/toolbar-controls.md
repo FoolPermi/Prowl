@@ -22,8 +22,15 @@ before changing a toolbar button, placement, control group, `ToolbarSpacer`,
 - [WWDC25: Build a SwiftUI app with the new design](https://developer.apple.com/videos/play/wwdc2025/323/) — fixed toolbar spacers and hiding shared glass background
 
 The installed macOS 26 SwiftUI interface declares `ToolbarItemGroup` as `ToolbarContent` and
-exposes `ToolbarContent.sharedBackgroundVisibility(_:)` only on macOS 26+. The app's macOS
-26 deployment target satisfies that availability requirement.
+exposes `ToolbarContent.sharedBackgroundVisibility(_:)` only on macOS 26+. The app itself
+deploys to macOS 15, so the four macOS 26-only toolbar APIs — `ToolbarSpacer(.fixed)`,
+`sharedBackgroundVisibility(_:)`, `toolbar(removing:)`, and `glassEffect` — are reached
+through `App/Sources/Support/LiquidGlassSupport.swift`: `ToolbarGroupSpacer`,
+`prowlHidingSharedBackground()`, `prowlRemovingToolbarTitle()`, and
+`prowlGlass(_:interactive:)`. On macOS 15 the spacer is an empty item, the hidden shared
+background is a no-op (each item draws its own background there), the window title is
+hidden directly, and glass becomes a material of the same shape. Use those helpers instead
+of the raw APIs in new toolbar code.
 
 ## 2. Prowl toolbar audit
 
@@ -38,7 +45,7 @@ exposes `ToolbarContent.sharedBackgroundVisibility(_:)` only on macOS 26+. The a
 | Sidebar | `supacode/Features/Repositories/Views/SidebarListView.swift` | Automatic Add Repository/Workspace item. | Correct single action. |
 | Archived Worktrees | `supacode/Features/Repositories/Views/ArchivedWorktreesDetailView.swift` | Automatic destructive Delete Selected item. | Correct single action. |
 
-`CommandPaletteOverlayView` and terminal tab backgrounds use `glassEffect`, but are not
+`CommandPaletteOverlayView` and terminal tab backgrounds use `prowlGlass`, but are not
 window-toolbar content and are deliberately outside this guide. The legacy Handoff HUD and
 dedicated Agents-popover Hand Off action were removed; Handoff now uses the workflow entry.
 
@@ -70,10 +77,12 @@ Hiding the bell/update owner's shared background keeps it independent, but also 
 system surface. Therefore `AgentNotificationsToolbarContent` uses exactly one isolated
 `ToolbarItem` with all of the following:
 
-1. `.sharedBackgroundVisibility(.hidden)` on that `ToolbarItem`;
+1. `.prowlHidingSharedBackground()` on that `ToolbarItem` (macOS 26's
+   `.sharedBackgroundVisibility(.hidden)`);
 2. an `HStack(spacing: 0)` containing `ToolbarNotificationsPopoverButton`, conditional
    `WorkflowHistoryPopoverButton`, experimental `MirrorHostButton`, and conditional `ToolbarUpdateButton`;
-3. one outer `.glassEffect(.regular.interactive(), in: Capsule())`.
+3. one outer `.prowlGlass(Capsule(), interactive: true)` (macOS 26's
+   `.glassEffect(.regular.interactive(), in: Capsule())`, a material capsule before it).
 
 This is an ownership boundary, not a new style system. Do not add a divider, child glass,
 child padding, child frame, `buttonStyle(.plain)`, or a new color while moving these controls.
@@ -95,7 +104,7 @@ behavior.
 1. Start with semantic relationship, then choose the native toolbar primitive:
    - one action → `ToolbarItem`;
    - related independent actions → `ToolbarItemGroup`;
-   - unrelated trailing groups → `ToolbarSpacer(.fixed)`;
+   - unrelated trailing groups → `ToolbarGroupSpacer()`;
    - status/display → placement-specific `ToolbarItem`.
 2. Let the toolbar supply button material, hover behavior, padding, separators, and overflow
    behavior by default.

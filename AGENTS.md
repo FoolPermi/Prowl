@@ -126,7 +126,7 @@ Reducer ← .terminalEvent(Event) ← AsyncStream<Event>
 
 ## Code Guidelines
 
-- Target macOS 26.0+, Swift 6.2+
+- Target macOS 15.0+, Swift 6.2+. Liquid Glass, the macOS 26 toolbar APIs, and Foundation Models need macOS 26; route them through `App/Sources/Support/LiquidGlassSupport.swift` and `#if canImport(FoundationModels)`
 - Before doing a big feature or when planning, consult with pfw (pointfree) skills on TCA, Observable best practices first.
 - Use `@ObservableState` for TCA feature state; use `@Observable` for non-TCA shared stores; never `ObservableObject`
 - Always mark `@Observable` classes with `@MainActor`

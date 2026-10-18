@@ -19,9 +19,15 @@ EXECUTABLE_NAME = ProwlApp
 GENERATE_INFOPLIST_FILE = YES
 INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.developer-tools
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
-MACOSX_DEPLOYMENT_TARGET = 26.0
-OTHER_LDFLAGS = $(inherited) -lc++ -framework GameController
-OTHER_SWIFT_FLAGS = $(inherited) -Xcc -Wno-incomplete-umbrella
+MACOSX_DEPLOYMENT_TARGET = 15.0
+# FoundationModels only exists in the macOS 26 SDK while the app deploys to macOS 15.
+# Weak-link it under the SDKs that have it, so a binary built there still launches on
+# macOS 15, and keep Swift from autolinking the framework strongly in the same build.
+# SDK conditions cover every 20-and-later SDK; older SDKs do not have the framework and
+# must not receive the flag, which would fail at link time.
+PROWL_WEAK_FRAMEWORKS[sdk=macosx2*] = -weak_framework FoundationModels
+OTHER_LDFLAGS = $(inherited) -lc++ -framework GameController $(PROWL_WEAK_FRAMEWORKS)
+OTHER_SWIFT_FLAGS = $(inherited) -Xcc -Wno-incomplete-umbrella -Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
 PRODUCT_MODULE_NAME = Prowl
 REGISTER_APP_GROUPS = YES
 RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO

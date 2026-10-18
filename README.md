@@ -224,7 +224,9 @@ Then add a repository with `⌘⇧O`, press `⌘N` to create a worktree, and lau
 
 ## Requirements
 
-macOS 26.0+
+macOS 15.0+
+
+Liquid Glass surfaces, the shared toolbar background, and the on-device branch-name model need macOS 26; earlier systems get material fallbacks and random branch names.
 
 ---
 
