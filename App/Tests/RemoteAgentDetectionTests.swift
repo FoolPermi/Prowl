@@ -479,6 +479,75 @@ struct RemoteAgentDetectionTests {
         + "Agents in this pane are detected only when they report their status themselves (OSC 7501).")
   }
 
+  /// A fixture whose mode comes from the stored consent, with no environment override.
+  private func makeConsentFixture(probe: Probe) -> Fixture {
+    let fixture = makeFixture(probe: probe)
+    fixture.state.remoteAgentDetectionEnabledForTesting = nil
+    fixture.state.remoteDetectionEnvironmentForTesting = [:]
+    return fixture
+  }
+
+  @Test func anUndecidedAnswerAsksOnceAndOpensNoConnection() async {
+    let probe = Probe()
+    let fixture = makeConsentFixture(probe: probe)
+    var asked: [String] = []
+    fixture.state.onRemoteAgentConsentNeeded = { surfaceID, destination in
+      #expect(surfaceID == fixture.surfaceID)
+      asked.append(destination)
+    }
+    probe.job = sshJob
+    await detect(fixture)
+    await detect(fixture)
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(asked == ["mini"])
+    #expect(fixture.source.attempts == 0)
+    #expect(fixture.state.remotePaneTrackers[fixture.surfaceID] == nil)
+    #expect(fixture.surface.bridge.state.remoteIndicator == nil)
+  }
+
+  @Test func anSSHOutsideTheGrammarDoesNotAsk() async {
+    let probe = Probe()
+    let fixture = makeConsentFixture(probe: probe)
+    var asked: [String] = []
+    fixture.state.onRemoteAgentConsentNeeded = { _, destination in asked.append(destination) }
+    probe.job = ForegroundJob(
+      processGroupID: getpid(),
+      processes: [
+        ForegroundProcess(
+          pid: getpid(), parentProcessID: 1, name: "ssh", argv0: "ssh", cmdline: "ssh -N mini",
+          arguments: ["ssh", "-N", "mini"])
+      ])
+    await detect(fixture)
+    #expect(asked.isEmpty)
+  }
+
+  @Test func turningDetectionOnReadsTheOpenSSHWithoutAReconnect() async {
+    let probe = Probe()
+    let fixture = makeConsentFixture(probe: probe)
+    probe.job = sshJob
+    await detect(fixture)
+    #expect(fixture.source.attempts == 0)
+
+    fixture.state.setRemoteAgentDetectionConsent(.enabled)
+    await detect(fixture)
+    await settle { fixture.source.recipes.count == 1 }
+    #expect(fixture.source.recipes.first?.destination == "mini")
+    #expect(fixture.state.remoteConsentAskedSSHBySurface.isEmpty)
+  }
+
+  @Test func theEnvironmentNeverAsks() async {
+    let probe = Probe()
+    let fixture = makeConsentFixture(probe: probe)
+    fixture.state.remoteDetectionEnvironmentForTesting = ["PROWL_REMOTE_AGENT_DETECTION": "0"]
+    var asked = false
+    fixture.state.onRemoteAgentConsentNeeded = { _, _ in asked = true }
+    probe.job = sshJob
+    await detect(fixture)
+    #expect(!asked)
+    #expect(fixture.source.attempts == 0)
+  }
+
   @Test func turningDetectionOffClearsTheRemoteLabel() async {
     let probe = Probe()
     let fixture = makeFixture(probe: probe)
@@ -1588,18 +1657,6 @@ struct RemoteAgentDetectionTests {
       skipsSurfaceCreationForTesting: true)
     #expect(surface.launchEnvironment["LC_PROWL_PANE"] == surface.id.uuidString)
     #expect(surface.launchEnvironment["PROWL_PANE_ID"] == surface.id.uuidString)
-  }
-}
-
-struct RemoteAgentDetectionSwitchTests {
-  @Test func detectionIsOnUnlessTurnedOff() throws {
-    let defaults = try #require(UserDefaults(suiteName: "RemoteAgentDetectionSwitchTests-\(UUID().uuidString)"))
-    #expect(RemoteAgentDetection.isEnabled(environment: [:], defaults: defaults))
-    #expect(!RemoteAgentDetection.isEnabled(environment: ["PROWL_REMOTE_AGENT_DETECTION": "0"], defaults: defaults))
-    defaults.set(false, forKey: RemoteAgentDetection.defaultsKey)
-    #expect(!RemoteAgentDetection.isEnabled(environment: [:], defaults: defaults))
-    // The environment wins over the default, both ways.
-    #expect(RemoteAgentDetection.isEnabled(environment: ["PROWL_REMOTE_AGENT_DETECTION": "1"], defaults: defaults))
   }
 }
 

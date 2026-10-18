@@ -251,10 +251,21 @@ final class WorktreeTerminalState {
   @ObservationIgnored var remoteFenceHistoryBySurface: [UUID: [LocalProcessGeneration: RemoteFenceHistory]] = [:]
   @ObservationIgnored var remoteSnapshotSourceForTesting: RemoteSnapshotSource?
   @ObservationIgnored var remoteUptimeForTesting: (() -> TimeInterval)?
+  /// Overrides the mode in tests: true is `.enabled`, false `.disabled`.
   @ObservationIgnored var remoteAgentDetectionEnabledForTesting: Bool?
+  @ObservationIgnored var remoteDetectionEnvironmentForTesting: [String: String]?
+  /// The stored answer about the side channel; the manager pushes it from the settings.
+  @ObservationIgnored var remoteAgentDetectionConsent: RemoteAgentDetectionConsent = .undecided
+  /// The `ssh` generation each pane asked about, so one `ssh` asks once.
+  @ObservationIgnored var remoteConsentAskedSSHBySurface: [UUID: LocalProcessGeneration] = [:]
+  /// A pane's `ssh` needs the user's answer before Prowl connects: (surface, destination).
+  @ObservationIgnored var onRemoteAgentConsentNeeded: ((UUID, String) -> Void)?
   @ObservationIgnored var accessibilityPosterForTesting: (@MainActor (Any, NSAccessibility.Notification) -> Void)?
-  var remoteAgentDetectionEnabled: Bool {
-    remoteAgentDetectionEnabledForTesting ?? RemoteAgentDetection.isEnabled
+  var remoteAgentDetectionMode: RemoteAgentDetection.Mode {
+    if let enabled = remoteAgentDetectionEnabledForTesting { return enabled ? .enabled : .disabled }
+    return RemoteAgentDetection.mode(
+      environment: remoteDetectionEnvironmentForTesting ?? ProcessInfo.processInfo.environment,
+      consent: remoteAgentDetectionConsent)
   }
   /// Test seams: the process probe, the OSC support table, and the diagnostics sink.
   @ObservationIgnored var agentProcessProbeForTesting: AgentProcessProbeOverride?

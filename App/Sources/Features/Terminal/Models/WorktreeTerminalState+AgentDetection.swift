@@ -350,9 +350,19 @@ extension WorktreeTerminalState {
   private func observeRemoteAgent(
     job: ForegroundJob?, localIdentified: IdentifiedAgentProcess?, surfaceID: UUID, now: Date
   ) -> RemotePaneTracker.Observation? {
-    guard remoteAgentDetectionEnabled else {
+    switch remoteAgentDetectionMode {
+    case .enabled:
+      break
+    case .disabled:
       retireRemotePaneTracker(surfaceID: surfaceID)
       setRemoteIndicator(nil, surfaceID: surfaceID)
+      return nil
+    case .awaitingConsent:
+      retireRemotePaneTracker(surfaceID: surfaceID)
+      setRemoteIndicator(nil, surfaceID: surfaceID)
+      if let job, localIdentified == nil, let ssh = Self.foregroundSSH(job) {
+        askRemoteAgentConsent(surfaceID: surfaceID, ssh: ssh)
+      }
       return nil
     }
     let tracker: RemotePaneTracker
@@ -545,6 +555,33 @@ extension WorktreeTerminalState {
       return (LocalProcessGeneration(pid: pid, startedAt: startedAt), Array(arguments.dropFirst()))
     }
     return nil
+  }
+
+  /// Asks once per `ssh` whether Prowl may open its own connection (docs-ai 082, L0 item 12).
+  /// It only parses the command line: no `ssh -G`, no connection. An `ssh` outside the
+  /// grammar would get no side channel, so it does not ask.
+  private func askRemoteAgentConsent(
+    surfaceID: UUID, ssh: (generation: LocalProcessGeneration, arguments: [String])
+  ) {
+    guard remoteConsentAskedSSHBySurface[surfaceID] != ssh.generation else { return }
+    remoteConsentAskedSSHBySurface[surfaceID] = ssh.generation
+    guard case .supported(let recipe) = SSHInvocation.parse(ssh.arguments) else { return }
+    onRemoteAgentConsentNeeded?(surfaceID, recipe.destination)
+  }
+
+  /// Applies the stored answer. Turning detection on wakes the panes that asked, so their
+  /// open `ssh` sessions are detected without a reconnect.
+  func setRemoteAgentDetectionConsent(_ consent: RemoteAgentDetectionConsent) {
+    guard remoteAgentDetectionConsent != consent else { return }
+    remoteAgentDetectionConsent = consent
+    guard remoteAgentDetectionMode == .enabled else { return }
+    let asked = remoteConsentAskedSSHBySurface.keys
+    remoteConsentAskedSSHBySurface.removeAll()
+    for surfaceID in asked {
+      guard let view = surfaces[surfaceID], let tabId = tabId(containing: surfaceID) else { continue }
+      startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
+      interruptAgentDetectionSleep(forSurfaceID: surfaceID)
+    }
   }
 
   func retireRemotePaneTracker(surfaceID: UUID) {

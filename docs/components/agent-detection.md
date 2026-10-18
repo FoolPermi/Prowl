@@ -400,9 +400,23 @@ frames keep the last trusted state instead of forcing Idle.
 ## Remote agents over SSH
 
 When a pane's foreground command is a local `ssh`, Prowl shows the agent that runs on the
-host (docs-ai 082, L0). Prowl installs nothing on the host and edits no rc file. To turn
-the feature off, run `defaults write com.onevcat.prowl remoteAgentDetectionEnabled -bool
-false` and relaunch Prowl, or launch it with `PROWL_REMOTE_AGENT_DETECTION=0`.
+host (docs-ai 082, L0). Prowl installs nothing on the host and edits no rc file.
+
+- **Consent.** Prowl does not connect to a host before you agree. The first `ssh` that
+  Prowl can read shows "Detect agents on <host>?" in the toolbar status, with its panel
+  open. The panel does not take keyboard focus, so you can finish a password or code
+  prompt first. **Turn On** starts detection in the open `ssh` panes at once, **Not Now**
+  asks again after Prowl restarts, and **Turn Off** stops asking. Until you choose, Prowl
+  opens no connection. Settings › Agents › Display › **Detect agents in SSH sessions**
+  holds the answer; the switch shows on until you turn it off. The environment variable
+  `PROWL_REMOTE_AGENT_DETECTION` overrides the setting and never asks: `0` turns the
+  feature off, any other value turns it on.
+- **Toolbar status.** While the focused pane's `ssh` uses Prowl's own connection, the
+  toolbar status shows the host and "Agent detection on", or "Agents not detected" with a
+  warning glyph. Hover (or click) for a panel that tells what the extra connection does,
+  why agents are not detected, and a button to the setting. The consent question ranks
+  above workflow runs there; this status ranks below workflow runs and rate limits, and
+  above the pull request.
 
 - **How.** Prowl opens its own SSH connection to the same target (`ssh -G` resolves user,
   host name, port, `ProxyJump` and `-F`). It runs a read-only probe over that connection:
