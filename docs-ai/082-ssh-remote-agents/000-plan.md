@@ -119,9 +119,13 @@ acquisition interval (local monotonic start and end), completeness, and outcome 
 - A response that arrives after its subscription is retired (local `ssh` exited, pane
   closed) is dropped.
 
-**C4 — Connection owner.** One actor per connection key owns the side channel
+**C4 — Connection owner.** One actor per connection key owns the **shared connection**: one
+OpenSSH connection, kept by an `ssh` ControlMaster process on Prowl's private
+`ControlPath`, that later `ssh` commands use with no new authentication. The **side
+channel** is Prowl's background commands (probe, polling) over it
 (`ssh -o ControlMaster=auto -o ControlPath=<hash> -o ControlPersist=<n> -o BatchMode=yes`,
-using `~/.ssh/config`, keys and launchd's `SSH_AUTH_SOCK`). The side channel always overrides
+using `~/.ssh/config`, keys and launchd's `SSH_AUTH_SOCK`). It is separate from a
+ControlMaster that the user's own configuration sets. The side channel always overrides
 session effects from the config: `ClearAllForwardings=yes`, no `RemoteCommand`, no
 `RequestTTY`, no `LocalCommand`. Panes and folders subscribe; the owner runs at most one
 probe at a time and publishes the latest snapshot. Scheduling: a request runs at once when
@@ -287,14 +291,14 @@ channel for validation, polling and git operations.
 - **Modes.**
   - **System SSH** (default): the current behaviour. `~/.ssh/config`, keys and
     `SSH_AUTH_SOCK`, with `BatchMode=yes`. Nothing changes for key-based hosts.
-  - **Ask when needed**: Prowl opens its own master connection with an askpass helper
+  - **Ask when needed**: Prowl opens the shared connection with an askpass helper
     (below). Each ssh prompt (password, verification code, key passphrase, host key
     confirmation) appears in a native sheet. After authentication, the side channel,
-    polling and Prowl-opened terminals all multiplex over this master until it ends.
+    polling and Prowl-opened terminals all use this shared connection until it ends.
   - **Remember password in Keychain**: an opt-in option under Ask when needed, off by
     default. The helper answers the host's password prompt from the Keychain. A
     verification code, a passphrase and a host key prompt always go to the user.
-- **Askpass helper.** Prowl starts the master `ssh` with `SSH_ASKPASS=<helper in the app
+- **Askpass helper.** Prowl starts the shared connection's `ssh` with `SSH_ASKPASS=<helper in the app
   bundle>`, `SSH_ASKPASS_REQUIRE=force` (OpenSSH ≥ 8.4) and a one-time token in the
   environment. `SSH_ASKPASS` takes one executable path and no arguments, so the helper is
   a dedicated executable (or the bundled CLI that dispatches on its invocation name). ssh
@@ -322,18 +326,18 @@ channel for validation, polling and git operations.
   failure never retries by itself: backoff applies to network failures only. A host that
   limits failed logins (fail2ban, account lockout) must never see more attempts than the
   user made.
-- **Master lifetime.** The master uses Prowl's private `ControlPath` and the side channel
-  overrides (no forwarding, no `RemoteCommand`, no `LocalCommand`). It ends on its idle
+- **Shared connection lifetime.** The shared connection uses Prowl's private `ControlPath`
+  and the side channel overrides (no forwarding, no `RemoteCommand`, no `LocalCommand`). It ends on its idle
   `ControlPersist` timeout, at app quit (`-O exit`), or on network loss or sleep. After
   that, the host shows "Sign-in required", and Prowl prompts again only on a user action
   (open a folder or a terminal, or choose Sign In), never for background polling. In the
   Keychain mode, Prowl reconnects once without a prompt when the server asks only for the
   password.
-- **Terminals.** For an Ask host, a Prowl-opened tab runs `ssh -t` as a multiplexed client
-  of the live master (`ControlMaster=no` and the master's `ControlPath`), so it opens
-  without another prompt. When the master is not live, the tab runs a plain `ssh`, and the
-  user authenticates in the terminal as usual. The folder still asks for Sign In for its
-  side channel work.
+- **Terminals.** For an Ask host, a Prowl-opened tab runs `ssh -t` over the live shared
+  connection (`ControlMaster=no` and its `ControlPath`), so it opens without another
+  prompt. When the shared connection is not live, the tab runs a plain `ssh`, and the user
+  authenticates in the terminal as usual. The folder still asks for Sign In for its side
+  channel work.
 - **L0 sign-in action.** A manually typed `ssh` to a password host shows the pane's
   warning badge (authentication). The badge offers "Sign In for Agent Detection…". It runs
   the same Ask flow for that `ConnectionKey`, without a stored `HostProfile` and without the
@@ -424,8 +428,8 @@ case passes.
 | 11 | L2a | Session model: per-leaf session UUID, tags, create/attach/end, detach at close with notice and Undo, capture state, history read, worktree remove/archive confirmation and ordering | Persistent sessions |
 | 12 | L2b | Discovery, background sessions on the worktree row | Background sessions |
 | 13 | L1f | Remote Profile launches from structured invocation (create-once inside L2 sessions) | Remote Profiles |
-| 14 | L1g | Interactive sign-in: askpass helper, authentication lane, Prowl-owned master for a signed-in `ConnectionKey`, host key sheet, "Sign In for Agent Detection" on the L0 badge | Password and 2FA hosts can be probed after sign-in |
-| 15 | L1h | Settings › Hosts with authentication modes, Keychain-remembered password, "Sign-in required" state on remote folders, terminals over the live master | Password and 2FA remote folders |
+| 14 | L1g | Interactive sign-in: askpass helper, authentication lane, shared connection for a signed-in `ConnectionKey`, host key sheet, "Sign In for Agent Detection" on the L0 badge | Password and 2FA hosts can be probed after sign-in |
+| 15 | L1h | Settings › Hosts with authentication modes, Keychain-remembered password, "Sign-in required" state on remote folders, terminals over the live shared connection | Password and 2FA remote folders |
 
 ### Acceptance criteria (draft)
 
@@ -450,12 +454,12 @@ case passes.
 | L1-6 | Unavailable features are refused at the execution boundary (tests) and disabled with a reason in the UI; PR status works on a host without `gh` |
 | L1-7 | L1a–L1c change nothing for local repositories: existing tests pass and local fast paths (watcher timing) are unchanged |
 | L1-8 | Remote Profiles: large multiline prompts, empty arguments, quotes, `$`, `$(…)` text and environment overrides arrive byte for byte; carrier values never appear in typed text; dedicated-home Profiles are unavailable with a reason; reconnect never relaunches |
-| L1-9 | A password host and a password + TOTP host: one sign-in in a native sheet that names the host; then the probe, polling and Prowl-opened terminals work with no new prompt until the master ends |
+| L1-9 | A password host and a password + TOTP host: one sign-in in a native sheet that names the host; then the probe, polling and Prowl-opened terminals work with no new prompt until the shared connection ends |
 | L1-10 | No secret appears in argv, the environment, files, logs or crash reports (checked with `ps`, the unified log and the run directory) |
 | L1-11 | Wrong password, cancel and timeout make no automatic authentication retry; the server sees no more attempts than the user made; the host shows the reason |
 | L1-12 | Keychain: stored only after success and opt-in; answers at most once per attempt and only the password prompt; a verification code, passphrase or host key prompt always goes to the user; removing the host or the option deletes the item |
 | L1-13 | An unknown host key needs an explicit accept with its fingerprint; a changed host key is refused |
-| L1-14 | Idle expiry, app quit, sleep and network loss end the master; the host shows "Sign-in required" and prompts again only on a user action; System SSH hosts keep `BatchMode=yes` and their current behaviour |
+| L1-14 | Idle expiry, app quit, sleep and network loss end the shared connection; the host shows "Sign-in required" and prompts again only on a user action; System SSH hosts keep `BatchMode=yes` and their current behaviour |
 | L1-15 | A manual `ssh` to a password host: after "Sign In for Agent Detection", the agent is probed (correlated), and the user's own `ssh` is unchanged |
 | L2-1 | Opening a remote worktree with the option on attaches tmux automatically; the user types no tmux command |
 | L2-2 | A session survives tab close, app quit, network loss and sleep; restore reattaches with the screen intact |
@@ -494,7 +498,7 @@ case passes.
 | User name and password fields in repository settings | Rejected (2026-10-18): authentication belongs to the host; a stored password cannot answer a verification code, a passphrase or a host key prompt |
 | `sshpass`, or a password in argv or the environment | Rejected (2026-10-18): visible to other processes, and no second factor |
 | Embedded SSH library for the side channel | Rejected (2026-10-18): a second SSH implementation that differs from `~/.ssh/config` (`Match`, `ProxyJump`, agent, GSSAPI) |
-| The pane's own `ssh` becomes Prowl's master | Rejected (2026-10-18): the master gets the session's forwardings and can outlive the session |
+| The pane's own `ssh` becomes Prowl's shared connection | Rejected (2026-10-18): the connection gets the session's forwardings and can outlive the session |
 | Use the user's own ControlMaster from `~/.ssh/config` | Deferred (2026-10-18): possible for System SSH hosts as a client only (`-O check`, never `-O exit`); its lifetime belongs to the user |
 | L3 resident observer | Not planned (2026-10-16) |
 
@@ -507,7 +511,7 @@ case passes.
 - Probe cost on process-heavy macOS hosts (the spike calls `ps` per process).
 - tmux option set: mouse, extended keys (Shift+Enter in agents), history limit.
 - Interactive authentication: forwardings that `~/.ssh/config` asks for when a terminal is a
-  multiplexed client of Prowl's master, and their lifetime.
+  multiplexed client of Prowl's shared connection, and their lifetime.
 - Interactive authentication: how to tell the password prompt from other keyboard-interactive
   prompts reliably, and what `SSH_ASKPASS_PROMPT` gives for confirmations and FIDO touch.
 - Interactive authentication: the default `ControlPersist` idle timeout for an Ask host.
@@ -517,4 +521,4 @@ case passes.
 - Updated 2026-10-16: spike record for L0–L2 — see [002-spike-findings.md](002-spike-findings.md)
 - Updated 2026-10-17: revised in place after review round 1 — shared contracts C1–C6 (host identity, typed process reference, snapshot freshness, connection owner, structured commands, probe wire format), secondary port key, attachment-epoch fence, `clear` as withdrawal, capture-based tmux state, per-pane sessions with separate create/attach/end, structured remote Profile launch, local fast paths behind the host boundary, admission enforcement, UX items, PR order
 - Updated 2026-10-17: revised in place after review round 2 — ownership-based evidence retirement and `ConnectionKey` in S1, replacement-interval OSC fence, effective-config overrides and authority rebinding, qualified secondary key, stale projection and remote-unprobed origin, scheduling rule and numeric budgets, detach at close with reconnect Undo, removal disclosure, exposure gates
-- Updated 2026-10-18: added "L1 advanced — Interactive authentication" (host-level authentication modes, askpass helper, Prowl-owned master, opt-in Keychain password, L0 sign-in action), slices L1g–L1h and criteria L1-9 to L1-15
+- Updated 2026-10-18: added "L1 advanced — Interactive authentication" (host-level authentication modes, askpass helper, shared connection, opt-in Keychain password, L0 sign-in action), slices L1g–L1h and criteria L1-9 to L1-15
