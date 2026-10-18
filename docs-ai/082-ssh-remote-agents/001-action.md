@@ -293,8 +293,10 @@ label, the ssh-ended marker, and turning the flag on.
 - **Health apart from state.** `RemoteAgentHealth` maps `RemoteAgentContext` to one of
   four values: `live`, `unknownState` (confirmed, but no evidence decides),
   `lastSeen(date)` (stale), or `unavailable` (never confirmed). The row keeps the agent's
-  last state. A state that is not live is greyed out, with no working spinner. A
-  state-unknown pill reads "Unknown".
+  last state. A state that is not live is greyed out, with no working spinner. A known
+  `blocked` is the exception and stays red (`RemoteAgentPresentation.emphasizesState`):
+  OSC has no heartbeat, so a blocked agent goes stale while it waits for the user, and a
+  missed prompt costs more than a false one. A state-unknown pill reads "Unknown".
 - **Row.** The subtitle line starts with a network glyph, then one text `user@host ·
   subtitle` ("Remote host" while unresolved), which truncates at its tail. The health
   text sits under the state pill, so a long host never hides it: "Last seen … ago" (a

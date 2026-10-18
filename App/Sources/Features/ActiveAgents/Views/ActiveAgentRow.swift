@@ -76,11 +76,9 @@ struct ActiveAgentRow: View {
     }
   }
 
-  /// A remote state the host does not confirm, or that no evidence decides, is shown but not
-  /// emphasized.
-  private var isStateUnconfirmed: Bool {
-    guard let remote = entry.remote else { return false }
-    return RemoteAgentHealth(remote) != .live
+  private var isStateEmphasized: Bool {
+    guard let remote = entry.remote else { return true }
+    return RemoteAgentPresentation.emphasizesState(entry.displayState, remote: remote)
   }
 
   private var agentIcon: some View {
@@ -98,13 +96,13 @@ struct ActiveAgentRow: View {
   private var statusPill: some View {
     VStack(alignment: .trailing, spacing: 1) {
       HStack(spacing: 4) {
-        if entry.displayState == .working, !reduceMotion, !isStateUnconfirmed {
+        if entry.displayState == .working, !reduceMotion, isStateEmphasized {
           BaguaWorkingIndicator()
         } else {
           statusText
         }
       }
-      .foregroundStyle(isStateUnconfirmed ? Color.secondary : entry.displayState.foregroundStyle)
+      .foregroundStyle(isStateEmphasized ? entry.displayState.foregroundStyle : Color.secondary)
       healthText
         .font(.caption2)
         .foregroundStyle(.secondary)

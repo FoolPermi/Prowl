@@ -20,6 +20,24 @@ struct RemoteAgentPresentationTests {
     #expect(RemoteAgentHealth(never) == .unavailable)
   }
 
+  @Test func onlyAConfirmedStateOrABlockedStateIsEmphasized() {
+    let live = RemoteAgentContext(connection: key, correlation: .correlated, confirmedAt: now, now: now)
+    #expect(RemoteAgentPresentation.emphasizesState(.working, remote: live))
+    let quiet = RemoteAgentContext(
+      connection: key, correlation: .correlated, confirmedAt: now, now: now.addingTimeInterval(12))
+    #expect(!RemoteAgentPresentation.emphasizesState(.working, remote: quiet))
+    #expect(!RemoteAgentPresentation.emphasizesState(.idle, remote: quiet))
+    // A blocked agent stops reporting, so it goes stale while it still waits for the user.
+    #expect(RemoteAgentPresentation.emphasizesState(.blocked, remote: quiet))
+    let never = RemoteAgentContext(
+      connection: key, correlation: .probeUnavailable(.hostKey), confirmedAt: nil, now: now, isUnprobed: true)
+    #expect(RemoteAgentPresentation.emphasizesState(.blocked, remote: never))
+    // The pill reads "Unknown", not "Blocked".
+    let unknown = RemoteAgentContext(
+      connection: key, correlation: .correlated, confirmedAt: now, now: now, stateKnown: false)
+    #expect(!RemoteAgentPresentation.emphasizesState(.blocked, remote: unknown))
+  }
+
   @Test func theHostLabelFallsBackWhileTheConnectionIsUnresolved() {
     let resolved = RemoteAgentContext(connection: key, correlation: .correlated, confirmedAt: now, now: now)
     #expect(RemoteAgentPresentation.hostLabel(for: resolved) == "alice@box.example")

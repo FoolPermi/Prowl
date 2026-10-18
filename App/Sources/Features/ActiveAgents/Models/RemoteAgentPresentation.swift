@@ -28,6 +28,20 @@ nonisolated enum RemoteAgentPresentation {
     remote.hostLabel ?? String(localized: "Remote host")
   }
 
+  /// Whether the row shows the state as a local agent's. A state the host does not confirm is
+  /// not emphasized, except a known `blocked`: OSC has no heartbeat, so a blocked agent goes
+  /// stale while it still waits for the user, and a missed prompt costs more than a false one.
+  static func emphasizesState(_ state: AgentDisplayState, remote: RemoteAgentContext) -> Bool {
+    switch RemoteAgentHealth(remote) {
+    case .live:
+      return true
+    case .unknownState:
+      return false
+    case .lastSeen, .unavailable:
+      return state == .blocked && remote.isStateKnown
+    }
+  }
+
   /// Why the observation rests on what it does, for the row's tooltip.
   static func explanation(for remote: RemoteAgentContext) -> String {
     let host = hostLabel(for: remote)
