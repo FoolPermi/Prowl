@@ -35,11 +35,10 @@ each is marked as such.
 
 Living documents hosted here:
 
-- `001-fork-bootstrap-and-release-pipeline/release-runbook.md` — fork sync & release runbook
+- `001-fork-bootstrap-and-release-pipeline/release-runbook.md` — release runbook
 - `007-ghostty-embedding-integration/ghostty-fork-sync.md` — Ghostty fork/submodule upgrade runbook
 - `012-keybinding-system/architecture.md` — keybinding system reference
 - `013-prowl-cli/contracts/` — normative CLI contracts
-- `017-upstream-sync-process/upstream-ledger.md` — upstream review ledger (baseline + decisions)
 - `020-observability/runbook.md` — observability/diagnostics runbook
 - `063-agent-workflows/dsl-spec.md` — Agent Workflow DSL (`prowl.workflow/v1`) normative spec
 - `063-agent-workflows/release-plan.md` — release/order plan shared by 063 and 064
@@ -99,7 +98,7 @@ keep the old paths. Use this table to find a file that an old entry names:
 | 014 | [terminal-layout-persistence](014-terminal-layout-persistence/000-plan.md) | 2026-03-31 | Layout snapshot save/restore; font-size persistence; launch races |
 | 015 | [repositories-feature-refactor](015-repositories-feature-refactor/000-plan.md) | 2026-04-03 | TCA decomposition of RepositoriesFeature and later code-health splits |
 | 016 | [dev-build-and-ci-workflow](016-dev-build-and-ci-workflow/000-plan.md) | 2026-04-04 | Build/test tooling, CI parallelism, Debug identity, incremental caching, Shared module boundary, CAS fallback and cache save scope, test hang watchdog |
-| 017 | [upstream-sync-process](017-upstream-sync-process/000-plan.md) | 2026-04-08 | Upstream review discipline, baselines, batch decisions |
+| 017 | [upstream-sync-process](017-upstream-sync-process/000-plan.md) | 2026-04-08 | Upstream review discipline, baselines, batch decisions (retired 2026-10-18) |
 | 018 | [archived-worktrees](018-archived-worktrees/000-plan.md) | 2026-04-09 | Archived worktree discoverability and auto-delete |
 | 019 | [worktree-creation-and-lifecycle](019-worktree-creation-and-lifecycle/000-plan.md) | 2026-04-12 | Creation/merge flows, safe deletion, Add-to-Prowl redesign |
 | 020 | [observability](020-observability/000-plan.md) | 2026-04-18 | Sentry + PostHog wiring; the App-Hang enable→tune→remove arc |
