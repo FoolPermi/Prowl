@@ -16,6 +16,7 @@ sections below record what shipped and what differs from the plan.
 | 2026-10-18 | S4b: pane and tab host label, ssh-ended marker; remote detection on by default. Review Loop: 3 rounds plus a 2-round follow-up, clean | #931 |
 | 2026-10-18 | S5a: probe format 2 maps a session's tmux client to its active pane, with the pane's foreground job and visible screen. Review Loop clean after 3 rounds | #932 |
 | 2026-10-18 | S5b: inside tmux, identity from the mapping and state from the capture. Review Loop clean after 3 rounds. L0 complete | #933 |
+| 2026-10-18 | S4c: consent before the first side-channel connection (stored `undecided`/`enabled`/`disabled`, toolbar consent panel, Settings switch) and the side-channel toolbar status. Review Loop clean after 3 rounds | #937 |
 
 ## S1 — Typed process references
 
