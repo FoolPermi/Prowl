@@ -262,9 +262,10 @@ at a `~/.grok/` install (so Cursor's own `agent` entrypoint stays Cursor).
    no OSC-specific opt-out; older versions remain on the existing fallback path.
 
    Claude reads the detected PID's native registry under its configured root
-   (`~/.claude/sessions` by default). `busy` and `shell` mean **Working**, including
-   assigned child and background shell work; `waiting` means **Blocked**, and `idle`
-   means **Idle**. Process generation is checked before and after each read.
+   (`~/.claude/sessions` by default). `busy` means **Working**, including assigned
+   child work; `waiting` means **Blocked**; `idle` means **Idle**, and so does `shell`,
+   where the turn has ended and the composer accepts input while background shells
+   still run. Process generation is checked before and after each read.
    `/new` and resume use the registry's current session. Two processes sharing a
    transcript retain independent states. Missing, partial, stale, or unsupported
    records fall back to the screen. The registry's `sessionId` is also the pane's
