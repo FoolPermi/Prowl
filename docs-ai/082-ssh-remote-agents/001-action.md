@@ -522,3 +522,49 @@ identity from the mapping and state from the screen.
     release at 0.56 s. Reattaching showed it working again after 0.58 s.
   - `state_known` stayed true throughout.
 
+
+## S4c — Consent before the first connection, side-channel status
+
+- **Stored answer.** `GlobalSettings.remoteAgentDetection` is a `RemoteAgentDetectionConsent`:
+  `undecided` (the default), `enabled` or `disabled`. An unknown stored value decodes as
+  `undecided`, so a newer build's value never fails the settings file. This replaces the
+  `remoteAgentDetectionEnabled` default of S4b. `RemoteAgentDetection.mode(environment:consent:)`
+  gives `enabled`, `disabled` or `awaitingConsent`; `PROWL_REMOTE_AGENT_DETECTION` still wins
+  (`0` off, any other value on) and never asks.
+- **No connection before consent.** The app pushes the answer through
+  `TerminalClient.Command.setRemoteAgentDetection` to every `WorktreeTerminalState`. While
+  the mode is `awaitingConsent`, `observeRemoteAgent` creates no tracker, so there is no
+  `ssh -G` and no side channel. The first foreground `ssh` of a pane generation asks once
+  (`remoteConsentAskedSSHBySurface`). It only parses the command line; an `ssh` outside the
+  grammar does not ask. The ask is the event `remoteAgentConsentNeeded(worktreeID,
+  surfaceID, destination)`. When the answer becomes `enabled`, the panes that asked are
+  woken, so their open `ssh` sessions are read without a reconnect.
+- **Panel.** `AppFeature.State.remoteAgentConsentPrompt` holds the question; a stored answer
+  or Not Now (`isRemoteAgentConsentDeferred`, until the next launch) drops new asks. The
+  toolbar status shows "Detect agents on <destination>?" and opens its popover at once
+  (`RemoteAgentConsentStatusButton`). The choices are Turn Off, Not Now and Turn On. They
+  are not focusable and none is the default button, so a Return typed for a password prompt
+  never answers. A change of the Settings switch (Agents › Display › SSH Sessions) also
+  answers and closes the panel.
+- **Side-channel status.** `RemoteChannelToolbarStatus` reads the focused pane's
+  `RemotePaneIndicator`: `connected` without `unsupported` (Prowl never connects for an
+  `ssh` outside the grammar). `RemoteChannelStatusButton` shows the host with "Agent
+  detection on", or a warning glyph with "Agents not detected". Hover or click opens a
+  panel that tells what the extra connection does, the issue explanation from
+  `RemoteAgentPresentation.paneIssueExplanation`, and "Agent Settings…".
+- **Order.** `ToolbarStatusSelection`: toast, consent, workflow, rate limit, side channel,
+  pull request, then the clock.
+- **Focus (measured).** A test window with a text view showed that neither
+  `NSPopover(.applicationDefined)` nor SwiftUI `.popover` changes the key window or the first
+  responder.
+- **E2E** (isolated Debug instance, mini, Claude 2.1.302):
+  - Undecided: `ssh` to mini opened the panel; no `cm-` process existed. AX reported the
+    main window as focused and the pane's text area as the focused element.
+  - Claude started on mini before the answer was not listed. Turn On started the side
+    channel after 0.34 s, stored `enabled`, and listed Claude (`correlated`, `probed`)
+    without a reconnect. The toolbar showed the host with "Agent detection on", and its
+    panel opened on click.
+  - "Agent Settings…" opened Settings › Agents › Display. Turning the switch off stored
+    `disabled`, ended the side channel after 0.34 s, and cleared the agent and the status.
+  - After a relaunch with `undecided`, Not Now closed the panel; a second `ssh` in that
+    launch did not ask, and no connection opened.
