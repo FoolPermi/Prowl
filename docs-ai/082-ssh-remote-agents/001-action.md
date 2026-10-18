@@ -539,8 +539,9 @@ identity from the mapping and state from the screen.
   grammar does not ask. The ask is the event `remoteAgentConsentNeeded(worktreeID,
   surfaceID, destination)`. A change of mode runs one tick on every pane, so open `ssh`
   sessions are read (or let go) without a reconnect or a key press, also in a pane whose
-  loop went cold while detection was off (review round 1). A pane that gets a tracker keeps
-  ticking; the others go cold again.
+  loop went cold while detection was off or the question waited. A cold pane also gets its
+  pane state back first: a tick cannot publish an agent without one (review rounds 1 and
+  2). A pane that gets a tracker keeps ticking; the others go cold again.
 - **Panel.** `AppFeature.State.remoteAgentConsentPrompt` holds the question; a stored answer
   or Not Now (`isRemoteAgentConsentDeferred`, until the next launch) drops new asks. The
   toolbar status shows "Detect agents on <destination>?" and opens its popover at once

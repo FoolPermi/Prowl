@@ -579,8 +579,13 @@ extension WorktreeTerminalState {
     remoteAgentDetectionConsent = consent
     guard remoteAgentDetectionMode != previousMode else { return }
     if remoteAgentDetectionMode == .enabled { remoteConsentAskedSSHBySurface.removeAll() }
+    let now = Date()
     for (surfaceID, view) in surfaces {
       guard let tabId = tabId(containing: surfaceID) else { continue }
+      // A cold pane has no state, and a tick cannot publish an agent without one.
+      if surfaceAgentStates[surfaceID] == nil {
+        surfaceAgentStates[surfaceID] = PaneAgentState(lastChangedAt: now)
+      }
       startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
       interruptAgentDetectionSleep(forSurfaceID: surfaceID)
     }
