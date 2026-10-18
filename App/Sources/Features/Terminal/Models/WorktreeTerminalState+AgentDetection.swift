@@ -569,16 +569,18 @@ extension WorktreeTerminalState {
     onRemoteAgentConsentNeeded?(surfaceID, recipe.destination)
   }
 
-  /// Applies the stored answer. Turning detection on wakes the panes that asked, so their
-  /// open `ssh` sessions are detected without a reconnect.
+  /// Applies the stored answer. A change of mode runs one tick on every pane: a pane whose
+  /// loop went cold while detection was off or waiting has nothing else to wake it, and its
+  /// open `ssh` must be read (or let go) without a reconnect or a key press. A pane that
+  /// gets a tracker keeps ticking (`remoteAdjustedInterval`); the others go cold again.
   func setRemoteAgentDetectionConsent(_ consent: RemoteAgentDetectionConsent) {
     guard remoteAgentDetectionConsent != consent else { return }
+    let previousMode = remoteAgentDetectionMode
     remoteAgentDetectionConsent = consent
-    guard remoteAgentDetectionMode == .enabled else { return }
-    let asked = remoteConsentAskedSSHBySurface.keys
-    remoteConsentAskedSSHBySurface.removeAll()
-    for surfaceID in asked {
-      guard let view = surfaces[surfaceID], let tabId = tabId(containing: surfaceID) else { continue }
+    guard remoteAgentDetectionMode != previousMode else { return }
+    if remoteAgentDetectionMode == .enabled { remoteConsentAskedSSHBySurface.removeAll() }
+    for (surfaceID, view) in surfaces {
+      guard let tabId = tabId(containing: surfaceID) else { continue }
       startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
       interruptAgentDetectionSleep(forSurfaceID: surfaceID)
     }

@@ -537,8 +537,10 @@ identity from the mapping and state from the screen.
   `ssh -G` and no side channel. The first foreground `ssh` of a pane generation asks once
   (`remoteConsentAskedSSHBySurface`). It only parses the command line; an `ssh` outside the
   grammar does not ask. The ask is the event `remoteAgentConsentNeeded(worktreeID,
-  surfaceID, destination)`. When the answer becomes `enabled`, the panes that asked are
-  woken, so their open `ssh` sessions are read without a reconnect.
+  surfaceID, destination)`. A change of mode runs one tick on every pane, so open `ssh`
+  sessions are read (or let go) without a reconnect or a key press, also in a pane whose
+  loop went cold while detection was off (review round 1). A pane that gets a tracker keeps
+  ticking; the others go cold again.
 - **Panel.** `AppFeature.State.remoteAgentConsentPrompt` holds the question; a stored answer
   or Not Now (`isRemoteAgentConsentDeferred`, until the next launch) drops new asks. The
   toolbar status shows "Detect agents on <destination>?" and opens its popover at once

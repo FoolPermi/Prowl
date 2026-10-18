@@ -536,6 +536,24 @@ struct RemoteAgentDetectionTests {
     #expect(fixture.state.remoteConsentAskedSSHBySurface.isEmpty)
   }
 
+  /// Review R1: a pane whose loop went cold while detection was off has nothing to wake it;
+  /// turning detection on must start its loop, whether or not it ever asked.
+  @Test func turningDetectionOnRestartsAColdSSHPane() async {
+    let probe = Probe()
+    let fixture = makeConsentFixture(probe: probe)
+    fixture.state.setRemoteAgentDetectionConsent(.disabled)
+    probe.job = sshJob
+    await detect(fixture)
+    #expect(fixture.source.attempts == 0)
+    // The loop finished cold: no task is left for this surface.
+    fixture.state.agentDetectionTasks[fixture.surfaceID] = nil
+
+    fixture.state.setRemoteAgentDetectionConsent(.enabled)
+    await settle { fixture.source.attempts == 1 }
+    fixture.state.agentDetectionTasks[fixture.surfaceID]?.cancel()
+    fixture.state.retireRemotePaneTracker(surfaceID: fixture.surfaceID)
+  }
+
   @Test func theEnvironmentNeverAsks() async {
     let probe = Probe()
     let fixture = makeConsentFixture(probe: probe)
