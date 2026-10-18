@@ -26,6 +26,9 @@ nonisolated struct RemoteProbeSession: Equatable, Sendable {
   let processes: [RemoteProbeProcess]
   /// The tmux pane this session shows, when a tmux client is in its foreground.
   var tmux: RemoteProbeTmuxPane?
+  /// A tmux client is in this session's foreground, but the probe could not reach its server.
+  /// The session's own foreground job then says nothing about the agent in the pane.
+  var hasUnreadTmuxPane = false
 }
 
 /// The active pane of a tmux client in a session's foreground (docs-ai 082, L0 item 6). The
@@ -33,6 +36,9 @@ nonisolated struct RemoteProbeSession: Equatable, Sendable {
 /// environment, which names the server's first client.
 nonisolated struct RemoteProbeTmuxPane: Equatable, Sendable {
   static let screenLimit = 64 * 1024
+  /// The escaped screen text of one snapshot together. It stays well under
+  /// `RemoteCommandLimits.outputBytes`, which stops the whole probe.
+  static let screenBudget = 160 * 1024
 
   let clientPID: Int32
   /// tmux's pane id, such as `%3`.
@@ -42,9 +48,10 @@ nonisolated struct RemoteProbeTmuxPane: Equatable, Sendable {
   let isInMode: Bool
   let foregroundProcessGroupID: Int32
   let processes: [RemoteProbeProcess]
-  /// The pane's visible screen, as `capture-pane` prints it.
+  /// The pane's visible screen, as `capture-pane` prints it; nil when the snapshot's
+  /// `screenBudget` was used up before this pane.
   let screen: String?
-  /// The screen passed `screenLimit` and was cut.
+  /// The screen passed `screenLimit`; only its last whole lines are kept.
   let isScreenTruncated: Bool
 }
 

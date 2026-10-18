@@ -25,13 +25,19 @@ nonisolated enum RemoteProbeScript {
     #                                                foreground, and its active pane
     #   Y, Z                                         as P and D, for that pane's
     #                                                foreground job
-    #   C <pane|-> <truncated 0|1> <text>            that pane's visible screen
+    #   C <pane|-> <truncated 0|1|-> <text>          that pane's visible screen; 1 = only
+    #                                                its last lines, - = left out for the
+    #                                                screen budget
+    #   U <pane|-> <anchor pid> <client pid>         a tmux client in that session's
+    #                                                foreground whose server the probe
+    #                                                could not reach
     #   END <S count> <P count> <X count> <Y count>
     # A snapshot without END is incomplete.
     LC_ALL=C
     export LC_ALL
     uid=$(id -u)
-    cap=65536
+    cap=\#(RemoteProbeTmuxPane.screenLimit)
+    budget=\#(RemoteProbeTmuxPane.screenBudget)
     echo "PROWL-PROBE	2"
     clients=
 
@@ -223,7 +229,9 @@ nonisolated enum RemoteProbeScript {
 
     # screen_record <tmux> <socket> <tmux pane> <pane>: the C record of a pane's visible screen.
     # A failed capture prints nothing, even when it wrote part of a screen first, so the
-    # snapshot stays incomplete; a blank screen still prints its newlines.
+    # snapshot stays incomplete; a blank screen still prints its newlines. Past `cap`, the
+    # record keeps the last whole lines: an agent draws its composer and status at the
+    # bottom, and a cut line could split a character. Past the budget, it has no text.
     screen_record() {
       # The x keeps a trailing newline; the status is the capture's own.
       text=$("$1" -S "$2" capture-pane -p -t "$3" 2>/dev/null && printf x) || return 0
@@ -231,41 +239,66 @@ nonisolated enum RemoteProbeScript {
       truncated=0
       if [ "$(printf '%s' "$text" | wc -c)" -gt "$cap" ]; then
         truncated=1
-        text=$(printf '%s' "$text" | head -c "$cap"; printf x)
+        text=$(printf '%s' "$text" | tail -c "$cap" | sed '1d'; printf x)
         text=${text%x}
       fi
-      printf '%s' "$text" | PROWL_PANE="$4" awk -v t="$truncated" '
+      record=$(printf '%s' "$text" | PROWL_PANE="$4" awk -v t="$truncated" '
         BEGIN { RS = "\001"; ORS = "" }
         { s = $0; gsub(/%/, "%25", s); gsub(/\t/, "%09", s); gsub(/\n/, "%0A", s); gsub(/\r/, "%0D", s)
-          printf "C\t%s\t%s\t%s\n", ENVIRON["PROWL_PANE"], t, s; done = 1 }
-        END { if (!done) printf "C\t%s\t%s\t\n", ENVIRON["PROWL_PANE"], t }'
+          printf "C\t%s\t%s\t%s", ENVIRON["PROWL_PANE"], t, s; done = 1 }
+        END { if (!done) printf "C\t%s\t%s\t", ENVIRON["PROWL_PANE"], t }')
+      size=$(printf '%s' "$record" | wc -c)
+      if [ "$size" -gt "$budget" ]; then
+        printf 'C\t%s\t-\t\n' "$4"
+        return 0
+      fi
+      budget=$((budget - size))
+      printf '%s\n' "$record"
     }
 
-    # tmux: map each client in a session's foreground to its active pane through the
-    # server it talks to (the inherited environment names the first client, so it is
-    # never used), then report that pane's foreground job and visible screen.
-    xcount=0
-    ycount=0
-    tdir="${TMUX_TMPDIR:-/tmp}/tmux-$uid"
-    while read -r apid pane cpid exe; do
-      [ -n "$exe" ] && [ -x "$exe" ] || continue
-      found=
-      for sock in "$tdir"/*; do
-        [ -S "$sock" ] || continue
-        # Spaces, not TAB: under LC_ALL=C tmux prints control characters as `_`. None of
-        # these fields can hold a space.
-        found=$("$exe" -S "$sock" list-clients -F '#{client_pid} #{pane_id} #{pane_tty} #{pane_in_mode} #{pane_pid}' \
-          2>/dev/null | awk -v p="$cpid" '$1 == p { print; exit }')
-        [ -n "$found" ] && break
+    # tmux_fallback: a tmux for a client whose own binary is gone (an upgrade removed it). A
+    # tmux of another version fails against the server like an unreachable one.
+    tmux_fallback() {
+      for t in "$(command -v tmux 2>/dev/null)" /opt/homebrew/bin/tmux /usr/local/bin/tmux; do
+        if [ -n "$t" ] && [ -x "$t" ]; then
+          printf '%s' "$t"
+          return 0
+        fi
       done
-      [ -n "$found" ] || continue
+    }
+
+    # tmux_client <anchor pid> <pane> <client pid> <tmux>: map a tmux client in a session's
+    # foreground to its active pane through the server it talks to (the inherited environment
+    # names the first client, so it is never used), then report that pane's foreground job
+    # and visible screen. Without a server that lists the client, a U record says so.
+    tmux_client() {
+      apid=$1
+      pane=$2
+      cpid=$3
+      exe=$4
+      [ -n "$exe" ] && [ -x "$exe" ] || exe=$(tmux_fallback)
+      found=
+      if [ -n "$exe" ]; then
+        for sock in "$tdir"/*; do
+          [ -S "$sock" ] || continue
+          # Spaces, not TAB: under LC_ALL=C tmux prints control characters as `_`. None of
+          # these fields can hold a space. `pane_in_mode` counts modes, so ask for a flag.
+          found=$("$exe" -S "$sock" list-clients \
+            -F '#{client_pid} #{pane_id} #{pane_tty} #{?pane_in_mode,1,0} #{pane_pid}' \
+            2>/dev/null | awk -v p="$cpid" '$1 == p { print; exit }')
+          [ -n "$found" ] && break
+        done
+      fi
+      if [ -z "$found" ]; then
+        printf 'U\t%s\t%s\t%s\n' "$pane" "$apid" "$cpid"
+        return 0
+      fi
       # shellcheck disable=SC2086
       set -- $found
       tpane=$2
       ptty=$3
       mode=$4
-      ppid=$5
-      fg=$(pane_tpgid "$ppid")
+      fg=$(pane_tpgid "$5")
       [ -n "$fg" ] || fg=-1
       printf 'X\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pane" "$apid" "$cpid" "$tpane" "$ptty" "${mode:-0}" "$fg"
       xcount=$((xcount + 1))
@@ -277,8 +310,16 @@ nonisolated enum RemoteProbeScript {
       fi
       ycount=$((ycount + $(printf '%s\n' "$job" | awk 'NF { n++ } END { print n + 0 }')))
       screen_record "$exe" "$sock" "$tpane" "$pane"
+    }
+
+    xcount=0
+    ycount=0
+    tdir="${TMUX_TMPDIR:-/tmp}/tmux-$uid"
+    # Clients of Prowl panes first, so a session Prowl cannot name never takes their budget.
+    while read -r apid pane cpid exe; do
+      [ -n "$cpid" ] && tmux_client "$apid" "$pane" "$cpid" "$exe"
     done <<EOF
-    $clients
+    $(printf '%s' "$clients" | awk '$2 != "-"'; printf '%s' "$clients" | awk '$2 == "-"')
     EOF
     printf 'END\t%s\t%s\t%s\t%s\n' "$scount" "$pcount" "$xcount" "$ycount"
 

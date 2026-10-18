@@ -382,7 +382,12 @@ identity from the mapping and state from the screen.
     pid, so it follows all sessions.
   - `Y` and `Z`: as `P` and `D`, for that pane's foreground job.
   - `C <pane> <truncated> <text>`: the pane's visible screen (`capture-pane -p`), capped at
-    64 KiB.
+    64 KiB. Past the cap it keeps the last whole lines (`1`): an agent draws its composer
+    and status at the bottom, and a cut line could split a character. All screens of one
+    snapshot share a 160 KiB budget (`RemoteProbeTmuxPane.screenBudget`); a screen past it
+    has no text (`-`). Clients of Prowl panes go first.
+  - `U <pane> <anchor pid> <client pid>`: a tmux client in a session's foreground whose
+    server the probe could not reach. `RemoteProbeSession.hasUnreadTmuxPane` carries it.
 
   `END` carries four counts (sessions, session members, clients, pane members). A pane
   without its `C` record makes the snapshot partial.
@@ -415,7 +420,29 @@ identity from the mapping and state from the screen.
     the same `%0`.
   - `RemoteConnectionLiveTests` on both hosts (with a tmux session attached) returns a
     complete report.
-- **Limits.** A server socket outside `${TMUX_TMPDIR:-/tmp}/tmux-$uid/` (as the side
-  channel sees `TMUX_TMPDIR`) is not found. Such a client stays a plain foreground
-  `tmux`, with no agent.
+- **Design review.** A later review of the design found that every
+  failed mapping was silent: the snapshot stayed complete, so the consumer would read the
+  plain `tmux` foreground as "the agent left". The fixes:
+  - A failed mapping prints `U`. The consumer treats that session as a gap, and only that
+    session.
+  - A client whose own binary is gone (macOS: `brew upgrade` removed the Cellar path that
+    `lsof` reports) uses a tmux on `PATH`, then `/opt/homebrew/bin/tmux`, then
+    `/usr/local/bin/tmux`. Reproduced on mini by deleting a copied binary under a live
+    client: the old probe dropped the client, the new one maps it.
+  - `pane_in_mode` counts modes (copy mode under a chooser is 2 on both hosts), so the
+    format asks for `#{?pane_in_mode,1,0}`.
+  - The screen budget and the kept bottom lines (above). Four 64 KiB screens used to fill
+    the 256 KiB output limit, which stops the whole probe.
+
+  Rejected: one `list-clients` per socket per tick (one or two clients is the common
+  case); `display-message -c` or `list-panes -a` (neither ties a client to its own pane);
+  sharing one capture between two clients of a pane (needs a reference record or a
+  temporary file; the budget already bounds the cost).
+- **Limits.**
+  - A server socket outside `${TMUX_TMPDIR:-/tmp}/tmux-$uid/` (as the side channel sees
+    `TMUX_TMPDIR`), such as `tmux -S <path>`, is not found. Its client gets a `U` record.
+  - Only one level of tmux: a tmux inside a tmux pane is the pane's foreground job.
+  - A program in a `display-popup` is not in the pane's foreground job.
+  - `list-clients` reports the window's active pane. A client attached with
+    `-f active-pane` can show another pane (not tested).
 

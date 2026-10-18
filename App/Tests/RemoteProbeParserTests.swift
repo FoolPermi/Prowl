@@ -77,6 +77,29 @@ struct RemoteProbeParserTests {
       "END\t1\t1\t1\t1",
     ].joined(separator: "\n") + "\n"
 
+  /// Recorded on the macOS host: one client of a server at a custom socket (`tmux -S`),
+  /// which the probe does not look for, and one client whose pane is in copy mode under a
+  /// chooser (`pane_in_mode` is 2 there).
+  nonisolated static let macOSUnreadTmux =
+    [
+      "PROWL-PROBE\t2",
+      "H\tDarwin\t1783703387.288317",
+      "S\tBBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB\t15626\t/dev/ttys000\t15626",
+      "P\tBBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB\t15626\t15625\t15626\tMon Oct 19 02:01:57 2026\t11\ttmux\ts\t"
+        + "/opt/homebrew/bin/tmux -S /tmp/pv-custom.sock new -A -s c",
+      "D\tBBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB\t15626\tl\t/Users/onevcat",
+      "S\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t15631\t/dev/ttys001\t15631",
+      "P\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t15631\t15627\t15631\tMon Oct 19 02:01:57 2026\t11\ttmux\ts\t"
+        + "/opt/homebrew/bin/tmux -L pv1 new -A -s v",
+      "D\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t15631\tl\t/Users/onevcat",
+      "U\tBBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB\t15626\t15626",
+      "X\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t15631\t15631\t%0\t/dev/ttys014\t1\t15636",
+      "Y\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t15636\t15635\t15636\tMon Oct 19 02:01:57 2026\t11\tzsh\ts\t-zsh",
+      "Z\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t15636\tl\t/Users/onevcat",
+      "C\tAAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA\t0\t➜  ~" + String(repeating: "%0A", count: 23),
+      "END\t2\t2\t1\t1",
+    ].joined(separator: "\n") + "\n"
+
   private static let mini = ConnectionKey(user: "onevcat", hostname: "mini.local")
 
   private func report(_ text: String) throws -> RemoteProbeReport {
@@ -187,29 +210,99 @@ struct RemoteProbeParserTests {
     #expect(!isComplete(parse([client, "C\t-\t0\t", "S\t-\t30\t/dev/pts/2\t30", "END\t2\t1\t1\t0"])))
     // Counts include pane members.
     #expect(!isComplete(parse([client, member, "C\t-\t0\t", "END\t1\t1\t1\t0"])))
+    // A screen left out for the budget is still a screen record.
+    guard case .complete(let omitted) = parse([client, member, "C\t-\t-\t", "END\t1\t1\t1\t1"]) else {
+      Issue.record("expected complete")
+      return
+    }
+    #expect(omitted.sessions.first?.tmux?.screen == nil)
+    #expect(omitted.sessions.first?.tmux?.isScreenTruncated == false)
   }
 
-  /// Runs the probe's `screen_record` function against a stand-in `tmux` that runs `body`.
-  private func screenRecord(tmux body: String) throws -> String {
+  @Test func aRecordedUnreadClientLeavesTheOtherSessionRead() throws {
+    let report = try report(Self.macOSUnreadTmux)
+    #expect(report.sessions.map(\.hasUnreadTmuxPane) == [true, false])
+    #expect(report.sessions[0].tmux == nil)
+    let pane = try #require(report.sessions[1].tmux)
+    #expect(pane.isInMode)
+    #expect(pane.processes.map(\.commandLine) == ["-zsh"])
+    #expect(pane.screen?.hasPrefix("➜  ~\n") == true)
+  }
+
+  @Test func anUnreadTmuxPaneIsMarkedOnItsSessionOnly() {
+    let head = [
+      "PROWL-PROBE\t2", "H\tLinux\tb",
+      "S\t-\t10\t/dev/pts/0\t11", "P\t-\t11\t10\t11\t5\t1\ttmux: client\tv\ttmux",
+      "S\t-\t30\t/dev/pts/2\t31", "P\t-\t31\t30\t31\t5\t1\tcodex\tv\tcodex",
+    ]
+    let unread = "U\t-\t10\t11"
+    func parse(_ lines: [String]) -> RemoteProbeParser.Result {
+      RemoteProbeParser.parse((head + lines).joined(separator: "\n") + "\n")
+    }
+    guard case .complete(let report) = parse([unread, "END\t2\t2\t0\t0"]) else {
+      Issue.record("expected complete")
+      return
+    }
+    #expect(report.sessions.map(\.hasUnreadTmuxPane) == [true, false])
+    #expect(report.sessions.first?.tmux == nil)
+    // A client of an unknown session, a second record for one session, pane records after it,
+    // and a read pane next to an unread one are malformed.
+    #expect(!isComplete(parse(["U\t-\t99\t11", "END\t2\t2\t0\t0"])))
+    #expect(!isComplete(parse([unread, unread, "END\t2\t2\t0\t0"])))
+    #expect(!isComplete(parse([unread, "Y\t-\t20\t19\t20\t6\t1\tcodex\tv\tcodex", "END\t2\t2\t0\t1"])))
+    #expect(!isComplete(parse([unread, "C\t-\t0\t", "END\t2\t2\t0\t0"])))
+    let client = "X\t-\t10\t11\t%3\t/dev/pts/1\t0\t20"
+    #expect(!isComplete(parse([client, "C\t-\t0\t", unread, "END\t2\t2\t1\t0"])))
+    #expect(!isComplete(parse([unread, client, "C\t-\t0\t", "END\t2\t2\t1\t0"])))
+  }
+
+  /// Runs `calls` after the probe's top-level shell functions, with a stand-in `tmux` that
+  /// runs `body`. `$tmux` names the stand-in and `$tdir` the socket directory, which holds
+  /// one socket when `withServer` is true. The stand-in is on `PATH` only when `prelude`
+  /// puts it there.
+  private func runProbe(
+    tmux body: String, withServer: Bool = false, prelude: String = "", calls: String
+  ) throws -> String {
     let script = RemoteProbeScript.text
-    let start = try #require(script.range(of: "screen_record() {\n"))
-    let end = try #require(script.range(of: "\n}\n", range: start.upperBound..<script.endIndex))
-    let function = String(script[start.lowerBound..<end.upperBound])
-    let directory = FileManager.default.temporaryDirectory.appending(path: "prowl-probe-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    var functions = ""
+    for name in ["screen_record", "tmux_fallback", "tmux_client"] {
+      let start = try #require(script.range(of: "\n\(name)() {\n"))
+      let end = try #require(script.range(of: "\n}\n", range: start.upperBound..<script.endIndex))
+      functions += String(script[script.index(after: start.lowerBound)..<end.upperBound])
+    }
+    // Short, because a socket path has to fit `sun_path`.
+    let directory = URL(filePath: "/tmp/pp-\(UUID().uuidString.prefix(8))")
+    let sockets = directory.appending(path: "s")
+    try FileManager.default.createDirectory(at: sockets, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let tmux = directory.appending(path: "tmux")
     try Data("#!/bin/sh\n\(body)\n".utf8).write(to: tmux)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmux.path)
+    let server = withServer ? try bindUnixSocket(at: sockets.appending(path: "default").path) : nil
+    defer { server.map { _ = close($0) } }
     let process = Process()
     process.executableURL = URL(filePath: "/bin/sh")
-    process.arguments = ["-c", "cap=8\n\(function)screen_record \"$0\" sock %3 PANE", tmux.path]
+    process.arguments = [
+      "-c",
+      """
+      tmux=$0 tdir=$1 cap=8 budget=40 xcount=0 ycount=0 table=
+      pane_tpgid() { echo 20; }
+      pane_job() { :; }
+      \(prelude)
+      \(functions)\(calls)
+      """,
+      tmux.path, sockets.path,
+    ]
     let output = Pipe()
     process.standardOutput = output
     try process.run()
     let data = output.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
     return String(bytes: data, encoding: .utf8) ?? ""
+  }
+
+  private func screenRecord(tmux body: String) throws -> String {
+    try runProbe(tmux: body, calls: #"screen_record "$tmux" sock %3 PANE"#)
   }
 
   @Test func aFailedCaptureLeavesNoScreenRecord() throws {
@@ -220,8 +313,62 @@ struct RemoteProbeParserTests {
     #expect(try screenRecord(tmux: "echo 'can\\'t find pane: %3' >&2; exit 1") == "")
     // A capture cut off by a lost server: part of a screen, then a failure. Still no record.
     #expect(try screenRecord(tmux: "printf 'partial screen\\n'; exit 1") == "")
-    // Past the cap (8 bytes here), the text is cut and marked.
-    #expect(try screenRecord(tmux: "printf '0123456789'") == "C\tPANE\t1\t01234567\n")
+  }
+
+  @Test func aScreenPastTheCapKeepsItsLastWholeLines() throws {
+    // The cap is 8 bytes here. An agent draws its composer and status at the bottom, and a
+    // cut line could split a UTF-8 character.
+    #expect(try screenRecord(tmux: "printf '0123456789\\nab\\n'") == "C\tPANE\t1\tab%0A\n")
+    #expect(try screenRecord(tmux: "printf '0123\\n456789\\n'") == "C\tPANE\t1\t456789%0A\n")
+    #expect(try screenRecord(tmux: "printf '1234567\\n'") == "C\tPANE\t0\t1234567%0A\n")
+  }
+
+  @Test func screensPastTheBudgetAreLeftOut() throws {
+    // Each record is 17 bytes; the budget is 40.
+    let output = try runProbe(
+      tmux: "printf 'abc\\n'",
+      calls: #"for p in A B C; do screen_record "$tmux" sock %3 PANE-$p; done"#)
+    #expect(output == "C\tPANE-A\t0\tabc%0A\nC\tPANE-B\t0\tabc%0A\nC\tPANE-C\t-\t\n")
+    // The process records need the rest of the output limit, past which the probe stops.
+    #expect(RemoteProbeTmuxPane.screenBudget < RemoteCommandLimits().outputBytes * 2 / 3)
+  }
+
+  /// A stand-in `tmux` whose server has one client, pid 11 on pane `%3`, in copy mode.
+  private static let tmuxServer = #"""
+    case "$3" in
+      list-clients) printf '%s\n' "$5" >> "${0%/*}/format"; echo '11 %3 /dev/pts/1 1 19' ;;
+      capture-pane) echo '> hi' ;;
+    esac
+    """#
+
+  @Test func aTmuxClientReadsItsPaneThroughItsServer() throws {
+    let output = try runProbe(
+      tmux: Self.tmuxServer, withServer: true,
+      calls: #"tmux_client 10 PANE 11 "$tmux"; cat "${tmux%/*}/format""#)
+    // `pane_in_mode` counts modes (copy mode under a chooser is 2), so the probe asks for a flag.
+    #expect(
+      output == """
+        X\tPANE\t10\t11\t%3\t/dev/pts/1\t1\t20
+        C\tPANE\t0\t> hi%0A
+        #{client_pid} #{pane_id} #{pane_tty} #{?pane_in_mode,1,0} #{pane_pid}
+
+        """)
+  }
+
+  @Test func aClientWhoseBinaryIsGoneUsesATmuxOnPath() throws {
+    // An upgrade removed the client's own binary.
+    let output = try runProbe(
+      tmux: Self.tmuxServer, withServer: true, prelude: #"PATH="${tmux%/*}:$PATH""#,
+      calls: #"tmux_client 10 PANE 11 /gone/tmux"#)
+    #expect(output.hasPrefix("X\tPANE\t10\t11\t%3\t"))
+  }
+
+  @Test func aClientWithoutAReachableServerIsUnread() throws {
+    // No socket in the directory, then a server that does not list the client.
+    #expect(try runProbe(tmux: Self.tmuxServer, calls: #"tmux_client 10 PANE 12 "$tmux""#) == "U\tPANE\t10\t12\n")
+    #expect(
+      try runProbe(tmux: Self.tmuxServer, withServer: true, calls: #"tmux_client 10 PANE 12 "$tmux""#)
+        == "U\tPANE\t10\t12\n")
   }
 
   private func isComplete(_ result: RemoteProbeParser.Result) -> Bool {
@@ -337,4 +484,22 @@ struct RemoteProbeParserTests {
     #expect(report.operatingSystem == .darwin)
     #expect(!report.bootID.isEmpty)
   }
+}
+
+/// A listening-free Unix socket at `path`, so the probe's `[ -S ]` test passes; the caller
+/// closes it.
+private func bindUnixSocket(at path: String) throws -> Int32 {
+  let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+  var address = sockaddr_un()
+  address.sun_family = sa_family_t(AF_UNIX)
+  let bytes = Array(path.utf8)
+  try #require(bytes.count < MemoryLayout.size(ofValue: address.sun_path))
+  withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+  let bound = withUnsafePointer(to: &address) {
+    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+      bind(fileDescriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+    }
+  }
+  try #require(bound == 0)
+  return fileDescriptor
 }
