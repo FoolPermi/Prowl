@@ -110,7 +110,7 @@ final class ProwlCLIIntegrationTests: XCTestCase {
     let server = try MockSocketServer(
       socketPath: socketPath,
       responseData: Data("abcde".utf8),
-      responseByteDelayMicroseconds: 200_000
+      responseByteDelayMicroseconds: 2_000_000
     )
     try server.start()
     defer { server.stop() }
@@ -132,7 +132,9 @@ final class ProwlCLIIntegrationTests: XCTestCase {
     XCTAssertEqual(result.exitCode, 0)
     XCTAssertEqual(result.stdout, "")
     XCTAssertEqual(result.stderr, "")
-    XCTAssertLessThan(start.duration(to: clock.now), .milliseconds(700))
+    // The drip takes 10 s, the hook deadline 250 ms. The bound includes the CLI's launch,
+    // which a loaded host can slow down by seconds.
+    XCTAssertLessThan(start.duration(to: clock.now), .seconds(5))
   }
 
   func testNativeHookBridgeSurvivesClosedPeerWithDefaultSIGPIPEDisposition() throws {

@@ -413,7 +413,8 @@ extension WorktreeTerminalState {
       invocation: SSHInvocation.parse(
         ssh.arguments, workingDirectory: ProcessDetection.currentDirectory(pid: ssh.generation.pid)),
       fenceHistory: remoteFenceHistoryBySurface[surfaceID]?[ssh.generation],
-      source: remoteSnapshotSourceForTesting ?? .live
+      source: remoteSnapshotSourceForTesting ?? .live,
+      uptime: remoteUptimeForTesting ?? { ProcessInfo.processInfo.systemUptime }
     ) { [weak self] in
       self?.wakeAgentDetectionForRemoteSnapshot(surfaceID: surfaceID)
     }

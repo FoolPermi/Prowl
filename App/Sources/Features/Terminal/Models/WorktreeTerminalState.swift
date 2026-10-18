@@ -250,6 +250,7 @@ final class WorktreeTerminalState {
   /// restores it with the records it fences.
   @ObservationIgnored var remoteFenceHistoryBySurface: [UUID: [LocalProcessGeneration: RemoteFenceHistory]] = [:]
   @ObservationIgnored var remoteSnapshotSourceForTesting: RemoteSnapshotSource?
+  @ObservationIgnored var remoteUptimeForTesting: (() -> TimeInterval)?
   @ObservationIgnored var remoteAgentDetectionEnabledForTesting: Bool?
   var remoteAgentDetectionEnabled: Bool {
     remoteAgentDetectionEnabledForTesting ?? RemoteAgentDetection.isEnabled

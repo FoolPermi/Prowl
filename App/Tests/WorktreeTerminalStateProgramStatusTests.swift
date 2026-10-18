@@ -786,12 +786,13 @@ struct WorktreeTerminalStateProgramStatusTests {
     var iterator = calls.stream.makeAsyncIterator()
     fixture.state.wakeAgentDetection(for: fixture.surface, tabId: fixture.tabID)
     _ = await iterator.next()
-    // The loop is now asleep on the warm interval (2 s); a wake must end that sleep.
-    let clock = ContinuousClock()
-    let start = clock.now
+    // The loop goes to sleep on the warm interval (2 s); a wake must end that sleep. The
+    // check is on the sleeper, not on elapsed time: a loaded host can delay the loop.
+    while fixture.state.agentDetectionSleepersBySurface[fixture.surfaceID] == nil { await Task.yield() }
+    let sleeper = fixture.state.agentDetectionSleepersBySurface[fixture.surfaceID]?.task
     fixture.state.wakeAgentDetection(for: fixture.surface, tabId: fixture.tabID)
+    #expect(sleeper?.isCancelled == true)
     _ = await iterator.next()
-    #expect(clock.now - start < .seconds(1))
     fixture.state.cleanupAllAgentDetectionState()
   }
 

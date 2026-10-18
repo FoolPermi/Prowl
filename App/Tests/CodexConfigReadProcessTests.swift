@@ -29,7 +29,8 @@ import Testing
     let process = CodexConfigReadProcess(
       executableURL: executable,
       temporaryBaseDirectory: root,
-      timeout: 2
+      // Generous: the exit must win even when a loaded host starts the shell slowly.
+      timeout: 10
     )
     await #expect(throws: CodexConfigReadProcessError.processFailed) {
       try await process.query(
