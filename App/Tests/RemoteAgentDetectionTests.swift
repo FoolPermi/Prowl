@@ -181,11 +181,8 @@ struct RemoteAgentDetectionTests {
   }
 
   /// Waits for the tracker's consumer task, which runs on the main actor between test steps.
-  private func settle(_ condition: () -> Bool) async {
-    for _ in 0..<1_000 where !condition() {
-      await Task.yield()
-    }
-    #expect(condition())
+  private func settle(sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool) async {
+    await waitUntil(sourceLocation: sourceLocation, condition)
   }
 
   private func deliver(_ fixture: Fixture, _ snapshot: RemoteProbeSnapshot) async {

@@ -141,11 +141,7 @@ struct AgentWaitCommandHandlerTests {
         ))
     }
 
-    for _ in 0..<5 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
   }
 
@@ -171,14 +167,8 @@ struct AgentWaitCommandHandlerTests {
           )
         ))
     }
-    for _ in 0..<9 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    #expect(!task.isCancelled)
-    await Task.yield()
-    await clock.advance(by: .milliseconds(200))
-    let response = await task.value
+    // `waitedMilliseconds` proves the two seconds: the handler counts the ticks it waited.
+    let response = await drive(task, clock)
     let payload = try #require(response.data).decode(as: AgentWaitCommandPayload.self)
     guard case .condition(let condition) = payload else {
       Issue.record("Expected condition payload")
@@ -190,6 +180,7 @@ struct AgentWaitCommandHandlerTests {
 
   @Test func requestedScreenWaitsForEightHundredMillisecondsOfStability() async throws {
     let clock = TestClock()
+    let screenReads = ReadCounter()
     let completed = snapshot(
       .completed(
         id: "d1", outcome: .succeeded, summary: "Done", createdAt: Self.start, completedAt: Self.start))
@@ -201,7 +192,10 @@ struct AgentWaitCommandHandlerTests {
             continuation.finish()
           })
       },
-      screenProvider: { _ in "one\ntwo\nthree" },
+      screenProvider: { _ in
+        screenReads.count += 1
+        return "one\ntwo\nthree"
+      },
       clock: clock,
       now: { Self.start }
     )
@@ -214,11 +208,9 @@ struct AgentWaitCommandHandlerTests {
           )
         ))
     }
-    for _ in 0..<4 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    // The dispatch timeout sleeps on the same clock: tick only once the screen phase began.
+    await waitUntil { screenReads.count > 0 }
+    let response = await drive(task, clock)
     let payload = try #require(response.data).decode(as: AgentWaitCommandPayload.self)
     guard case .dispatch(let dispatch) = payload else {
       Issue.record("Expected dispatch payload")
@@ -236,6 +228,7 @@ struct AgentWaitCommandHandlerTests {
 
   @Test func requestedScreenIsIncludedWithFailedDispatch() async throws {
     let clock = TestClock()
+    let screenReads = ReadCounter()
     let failed = snapshot(
       .completed(
         id: "d1",
@@ -252,7 +245,10 @@ struct AgentWaitCommandHandlerTests {
             continuation.finish()
           })
       },
-      screenProvider: { _ in "failed evidence" },
+      screenProvider: { _ in
+        screenReads.count += 1
+        return "failed evidence"
+      },
       clock: clock,
       now: { Self.start }
     )
@@ -266,11 +262,9 @@ struct AgentWaitCommandHandlerTests {
         ))
     }
 
-    for _ in 0..<4 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    // The dispatch timeout sleeps on the same clock: tick only once the screen phase began.
+    await waitUntil { screenReads.count > 0 }
+    let response = await drive(task, clock)
     let details = try #require(response.error?.details)
     let object = try #require(
       JSONSerialization.jsonObject(with: details.bytes) as? [String: Any]
@@ -311,11 +305,7 @@ struct AgentWaitCommandHandlerTests {
         ))
     }
 
-    for _ in 0..<9 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     let details = try #require(response.error?.details)
     let object = try #require(
       JSONSerialization.jsonObject(with: details.bytes) as? [String: Any]
@@ -408,11 +398,7 @@ struct AgentWaitCommandHandlerTests {
         ))
     }
 
-    for _ in 0..<5 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.agentGone)
     let details = try #require(response.error?.details).decode(as: AgentWaitErrorDetails.self)
     guard case .condition(let condition) = details else {
@@ -482,11 +468,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .blocked, timeout: 1, minimumConfidence: .exact))
     }
 
-    for _ in 0..<6 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
   }
 
@@ -541,11 +523,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .blocked, timeout: 5, minimumConfidence: .exact))
     }
 
-    for _ in 0..<4 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.ok)
     let payload = try #require(response.data).decode(as: AgentWaitCommandPayload.self)
     guard case .condition(let condition) = payload else {
@@ -575,11 +553,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .idle, timeout: 1, minimumConfidence: .exact))
     }
 
-    for _ in 0..<6 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
   }
 
@@ -610,11 +584,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .idle, timeout: 60, minimumConfidence: .exact))
     }
 
-    for _ in 0..<4 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.ok)
     let payload = try #require(response.data).decode(as: AgentWaitCommandPayload.self)
     guard case .condition(let condition) = payload else {
@@ -642,11 +612,7 @@ struct AgentWaitCommandHandlerTests {
     }
 
     let graceTicks = AgentWaitCommandHandler.agentAppearanceGraceMilliseconds / 200
-    for _ in 0..<graceTicks {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.agentNotFound)
     let details = try #require(response.error?.details).decode(as: AgentWaitErrorDetails.self)
     guard case .condition(let condition) = details else {
@@ -673,11 +639,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .idle, timeout: 1))
     }
 
-    for _ in 0..<5 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.agentNotFound)
     let details = try #require(response.error?.details).decode(as: AgentWaitErrorDetails.self)
     guard case .condition(let condition) = details else {
@@ -708,11 +670,7 @@ struct AgentWaitCommandHandlerTests {
     }
 
     // Advance past the timeout so a regression surfaces as WAIT_TIMEOUT instead of a hang.
-    for _ in 0..<16 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.ok, "\(String(describing: response.error))")
     let payload = try #require(response.data).decode(as: AgentWaitCommandPayload.self)
     guard case .condition(let condition) = payload else {
@@ -744,11 +702,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .idle, timeout: 3))
     }
 
-    for _ in 0..<16 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
   }
 
@@ -784,11 +738,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .idle, timeout: 3))
     }
 
-    for _ in 0..<16 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
     #expect(snapshotReads > 10)
   }
@@ -811,11 +761,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .exit, timeout: 3))
     }
 
-    for _ in 0..<16 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
   }
 
@@ -850,11 +796,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .changed, timeout: 3))
     }
 
-    for _ in 0..<16 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.error?.code == CLIErrorCode.waitTimeout)
   }
 
@@ -876,11 +818,7 @@ struct AgentWaitCommandHandlerTests {
       await handler.handle(envelope: conditionWait(target, .exit, timeout: 3))
     }
 
-    for _ in 0..<16 {
-      await Task.yield()
-      await clock.advance(by: .milliseconds(200))
-    }
-    let response = await task.value
+    let response = await drive(task, clock)
     #expect(response.ok, "\(String(describing: response.error))")
     let payload = try #require(response.data).decode(as: AgentWaitCommandPayload.self)
     guard case .condition(let condition) = payload else {
@@ -919,6 +857,15 @@ struct AgentWaitCommandHandlerTests {
     last: nil,
     lastBinding: nil
   )
+
+  private func drive(_ task: Task<CommandResponse, Never>, _ clock: TestClock<Duration>) async -> CommandResponse {
+    await advance(clock, by: .milliseconds(200), until: task)
+      ?? CommandResponse(ok: false, command: "agents.wait", schemaVersion: "")
+  }
+
+  private final class ReadCounter {
+    var count = 0
+  }
 
   private func conditionWait(
     _ target: TabResolvedTarget,
