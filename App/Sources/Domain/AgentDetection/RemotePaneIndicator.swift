@@ -28,7 +28,7 @@ nonisolated enum RemotePaneIndicator: Hashable, Sendable {
   static func issue(_ correlation: RemotePaneCorrelation) -> RemotePaneCorrelation? {
     switch correlation {
     case .pending, .correlated: nil
-    case .ambiguous, .unmapped, .probeUnavailable, .unsupported: correlation
+    case .ambiguous, .unmapped, .probeUnavailable, .unsupported, .tmuxUnreachable: correlation
     }
   }
 }

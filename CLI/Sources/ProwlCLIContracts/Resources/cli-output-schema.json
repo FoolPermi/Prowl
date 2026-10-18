@@ -1141,7 +1141,8 @@
             "ambiguous",
             "unmapped",
             "probe_unavailable",
-            "unsupported"
+            "unsupported",
+            "tmux_unreachable"
           ]
         },
         "correlation_reason": {

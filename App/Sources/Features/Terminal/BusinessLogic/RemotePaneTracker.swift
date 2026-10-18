@@ -86,6 +86,9 @@ nonisolated enum RemotePaneCorrelation: Hashable, Sendable {
   case probeUnavailable(RemoteProbeFailure?)
   /// The local `ssh` command line is outside the supported grammar.
   case unsupported(String)
+  /// The pane's session shows a tmux client whose server the probe cannot reach, for
+  /// example one started with `tmux -S` outside the default socket directory.
+  case tmuxUnreachable
 }
 
 /// Tracks one pane's foreground `ssh` and the remote agent it shows (docs-ai 082, L0).
@@ -326,7 +329,8 @@ final class RemotePaneTracker {
     guard bound == nil else { return false }
     switch correlation {
     case .unmapped, .probeUnavailable, .unsupported: return true
-    case .pending, .correlated, .ambiguous: return false
+    // tmux drops OSC 7501, and the local screen is the client's view.
+    case .pending, .correlated, .ambiguous, .tmuxUnreachable: return false
     }
   }
 
@@ -365,6 +369,12 @@ final class RemotePaneTracker {
     // Only this pane's own session is evidence about its agent: an unmapped or
     // ambiguous scan proves nothing (C3).
     guard mapped.count == 1 else { return bound == nil ? nil : .unchanged }
+    // The session shows a tmux client whose server the probe could not reach: its own
+    // foreground is that client, so the snapshot says nothing about the agent in the pane.
+    if mapped[0].hasUnreadTmuxPane {
+      isInTmux = true
+      return bound == nil ? nil : .unchanged
+    }
     // A partial snapshot that lost the tmux records is a gap, not a client that left.
     if snapshot.isComplete || mapped[0].tmux != nil { isInTmux = mapped[0].tmux != nil }
     let job = correlatedJob(report: report, epoch: snapshot.connectionEpoch)
@@ -408,9 +418,10 @@ final class RemotePaneTracker {
       if case .failed(let failure) = latest.outcome { return .probeUnavailable(failure) }
       return .probeUnavailable(nil)
     }
-    switch sessions(in: report, epoch: latest.connectionEpoch).count {
+    let mapped = sessions(in: report, epoch: latest.connectionEpoch)
+    switch mapped.count {
     case 0: return latest.isComplete ? .unmapped : .pending
-    case 1: return .correlated
+    case 1: return mapped[0].hasUnreadTmuxPane ? .tmuxUnreachable : .correlated
     default: return .ambiguous
     }
   }

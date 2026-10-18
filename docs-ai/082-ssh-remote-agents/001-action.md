@@ -483,6 +483,16 @@ identity from the mapping and state from the screen.
   `requestRefreshForScreenChange()`, which requests at most one probe every
   `screenChangeSpacing` (0.25 s). The owner coalesces the rest, so at most one probe is in
   flight.
+- **Unreachable tmux server** (after the S5a design review). A session with
+  `hasUnreadTmuxPane` is a gap for this pane alone: `consume` keeps `isInTmux`, does not
+  count a miss, and binds nothing. Its correlation is `tmuxUnreachable`:
+  - the pane badge shows the warning, with a reason that names `tmux -S` and no OSC 7501
+    fallback (tmux drops it);
+  - `--json` reports `remote.correlation` `tmux_unreachable`;
+  - a degraded OSC-only binding is not allowed there.
+
+  A bound agent stays listed and its state becomes unknown when its capture is older than
+  `RemoteAgentContext.staleAfter`.
 - **Test seam.** `GhosttySurfaceBridge.activeTextForTesting`.
 - **Measured** (macOS 26.5, tmux 3.7c, Claude 2.1.302):
   - Claude in `tmux -L s5e2e` appeared after 0.35 s (`claude.idleComposer` from the

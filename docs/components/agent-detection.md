@@ -443,8 +443,16 @@ false` and relaunch Prowl, or launch it with `PROWL_REMOTE_AGENT_DETECTION=0`.
   the state. Switching to another pane releases the agent, and switching back shows it
   again within a few seconds. A second client attached to the same pane shows the same
   agent in its own Prowl pane. A changing local screen asks for a fresh capture, with at
-  most one probe in flight. Servers whose socket is outside
-  `${TMUX_TMPDIR:-/tmp}/tmux-<uid>/` are not found.
+  most one probe in flight. A screen larger than 64 KiB keeps its last lines. When many
+  panes are captured at once, the screens of Prowl panes come first, and a screen past
+  the probe's budget leaves that agent's state unknown for that probe.
+- **tmux limits.** Prowl looks for tmux servers only in `${TMUX_TMPDIR:-/tmp}/tmux-<uid>/`.
+  When it cannot reach the server of a client (for example a server started with
+  `tmux -S <path>`, or a removed socket), the pane badge shows a warning and
+  `remote.correlation` is `tmux_unreachable`. An agent that was already listed stays
+  listed, and its state becomes unknown after 10 s; it is not released. Prowl follows
+  one level of tmux only: a tmux inside a tmux pane, or a program in a `display-popup`,
+  is not read.
 - **Release.** A probed agent is released after two complete fresh snapshots without it
   (about 2–3 s after it exits), or at once when the `ssh` exits.
 - **Limits.** A remote agent cannot be a `prowl agents dispatch` target that needs a

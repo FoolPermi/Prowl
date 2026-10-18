@@ -176,6 +176,26 @@ struct RemoteAgentDetectionTests {
       report: RemoteProbeReport(operatingSystem: .linux, bootID: "boot", sessions: [session]))
   }
 
+  /// A complete snapshot whose session shows a tmux client (pid 150) whose server the probe
+  /// could not reach.
+  private func unreadTmuxSnapshot(_ sequence: UInt64, pane: UUID?) -> RemoteProbeSnapshot {
+    let client = remoteProcess(150, name: "tmux")
+    var session = RemoteProbeSession(
+      paneID: pane, anchorPID: 100, tty: "/dev/pts/0", foregroundProcessGroupID: client.processGroupID,
+      processes: [client])
+    session.hasUnreadTmuxPane = true
+    let now = ProcessInfo.processInfo.systemUptime
+    return RemoteProbeSnapshot(
+      connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), connectionEpoch: 0, sequence: sequence,
+      startedAt: now, finishedAt: now, outcome: .complete,
+      report: RemoteProbeReport(operatingSystem: .linux, bootID: "boot", sessions: [session]))
+  }
+
+  private func paneIssue(_ fixture: Fixture) -> RemotePaneCorrelation? {
+    guard case .connected(_, _, let issue) = fixture.surface.bridge.state.remoteIndicator else { return nil }
+    return issue
+  }
+
   private static let workingClaude = "✻ Tempering… (12s · esc to interrupt)\n"
 
   private static let blockedClaude = """
@@ -1265,6 +1285,46 @@ struct RemoteAgentDetectionTests {
     await detect(fixture, screen: .unknown)
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
     #expect(fixture.state.lastAgentScreenScanBySurface[fixture.surfaceID]?.text == Self.workingClaude)
+  }
+
+  @Test func anUnreachableTmuxServerIsAGapAndNotAnExit() async {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    await bindWorkingTmuxClaude(fixture, probe: probe)
+    // The server's socket went away (or its binary no longer speaks to it): the session's
+    // foreground is only the client, which says nothing about the agent in the pane.
+    for sequence in UInt64(2)...4 {
+      await deliver(fixture, unreadTmuxSnapshot(sequence, pane: fixture.surfaceID))
+      await detect(fixture, screen: .unknown)
+    }
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == remoteRef(200))
+    #expect(fixture.state.remotePaneTrackers[fixture.surfaceID]?.correlation == .tmuxUnreachable)
+    // The pane says why its agents are not read.
+    #expect(paneIssue(fixture) == .tmuxUnreachable)
+    // The local screen (the client's view) never stands in.
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .working)
+    // The server is back.
+    await deliver(
+      fixture,
+      tmuxSnapshot(
+        5, pane: fixture.surfaceID, foreground: remoteProcess(200, name: "claude"), screen: Self.blockedClaude))
+    await detect(fixture, screen: .unknown)
+    #expect(fixture.state.remotePaneTrackers[fixture.surfaceID]?.correlation == .correlated)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.state == .blocked)
+  }
+
+  @Test func aTmuxClientOfAnUnreachableServerNeverBindsAnAgent() async {
+    let probe = Probe()
+    let fixture = makeFixture(probe: probe)
+    fixture.surface.bridge.activeTextForTesting = Self.workingClaude
+    probe.job = sshJob
+    await detect(fixture)
+    await settle { fixture.source.recipes.count == 1 }
+    await deliver(fixture, unreadTmuxSnapshot(1, pane: fixture.surfaceID))
+    await detect(fixture, screen: .working)
+    #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.detectedAgent == nil)
+    #expect(paneIssue(fixture) == .tmuxUnreachable)
+    #expect(fixture.state.remotePaneTrackers[fixture.surfaceID]?.allowsUnprobedBinding == false)
   }
 
   @Test func anOldCaptureLeavesTheStateUnknown() async throws {

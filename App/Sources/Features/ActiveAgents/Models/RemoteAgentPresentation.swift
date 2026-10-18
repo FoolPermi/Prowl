@@ -70,12 +70,21 @@ nonisolated enum RemoteAgentPresentation {
       return String(localized: "Prowl cannot read \(host): \(failureReason(failure)).")
     case .unsupported(let reason):
       return String(localized: "Prowl does not read hosts for this ssh command: \(reason).")
+    case .tmuxUnreachable:
+      return String(
+        localized: """
+          Prowl cannot reach the tmux server that this pane shows on \(host), so it does not detect \
+          the agents in it. Prowl looks for tmux servers only in the default socket directory: a \
+          server started with tmux -S is not found.
+          """)
     }
   }
 
   /// Why Prowl does not read a pane's agents, with what still works.
   static func paneIssueExplanation(_ issue: RemotePaneCorrelation, host: String) -> String {
     let reason = correlationExplanation(issue, host: host)
+    // tmux drops OSC 7501, so no report reaches the pane either.
+    if issue == .tmuxUnreachable { return reason }
     let fallback = String(
       localized: "Agents in this pane are detected only when they report their status themselves (OSC 7501).")
     return "\(reason) \(fallback)"

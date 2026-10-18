@@ -239,7 +239,8 @@ Each agent contains:
   - `host` (`user@hostname`), `user`, `hostname`, `port`: absent while the connection
     is not resolved.
   - `correlation`: `pending`, `correlated`, `ambiguous`, `unmapped`,
-    `probe_unavailable`, or `unsupported`.
+    `probe_unavailable`, `unsupported`, or `tmux_unreachable` (the pane shows a tmux
+    client whose server Prowl cannot reach).
   - `correlation_reason`: why. For `probe_unavailable` it is a code: `authentication`,
     `host_key`, `unresolvable_host`, `unreachable`, `launch`, `exit`,
     `unrecognized_output`, or `connection_failed`. For `unsupported` it names the `ssh`
