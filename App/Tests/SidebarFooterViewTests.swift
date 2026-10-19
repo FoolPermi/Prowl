@@ -2,6 +2,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct SidebarFooterViewTests {
   @Test func activeAgentsPanelToggleUsesStableSymbols() {
     #expect(SidebarFooterView.activeAgentsPanelIconName(isPanelHidden: true) == "person.crop.rectangle.stack")

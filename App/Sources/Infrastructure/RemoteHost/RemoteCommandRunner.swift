@@ -192,7 +192,8 @@ private nonisolated final class RemoteProcess: @unchecked Sendable {
     var actions: posix_spawn_file_actions_t?
     posix_spawn_file_actions_init(&actions)
     defer { posix_spawn_file_actions_destroy(&actions) }
-    if let workingDirectory { posix_spawn_file_actions_addchdir(&actions, workingDirectory) }
+    // The non-`_np` spelling is macOS 26 only; `_np` has been available since macOS 10.15.
+    if let workingDirectory { posix_spawn_file_actions_addchdir_np(&actions, workingDirectory) }
     posix_spawn_file_actions_adddup2(&actions, pipes.input.fileHandleForReading.fileDescriptor, 0)
     posix_spawn_file_actions_adddup2(&actions, pipes.output.fileHandleForWriting.fileDescriptor, 1)
     posix_spawn_file_actions_adddup2(&actions, pipes.error.fileHandleForWriting.fileDescriptor, 2)

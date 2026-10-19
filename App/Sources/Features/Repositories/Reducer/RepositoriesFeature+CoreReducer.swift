@@ -430,7 +430,7 @@ extension RepositoriesFeature {
         // Exit canvas: prefer the card focused in canvas, then the worktree
         // we came from, then the first available worktree.
         let targetID =
-          terminalClient.canvasFocusedWorktreeID()
+          MainActor.assumeIsolated { terminalClient.canvasFocusedWorktreeID() }
           ?? state.preCanvasTerminalTargetID
           ?? state.preCanvasWorktreeID
           ?? state.lastFocusedWorktreeID
@@ -541,7 +541,7 @@ extension RepositoriesFeature {
       // Canvas → Shelf switch opens *that* card as the active book,
       // not whatever was selected before Canvas was entered.
       let candidates = [
-        terminalClient.canvasFocusedWorktreeID(), state.preCanvasTerminalTargetID,
+        MainActor.assumeIsolated { terminalClient.canvasFocusedWorktreeID() }, state.preCanvasTerminalTargetID,
         state.preCanvasWorktreeID, state.lastFocusedWorktreeID,
         state.orderedWorktreeRows().first?.id,
         state.orderedRepositoryIDs().first(where: { state.repositories[id: $0]?.kind == .plain }),

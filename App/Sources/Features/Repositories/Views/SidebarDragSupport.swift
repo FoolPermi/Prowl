@@ -307,11 +307,13 @@ extension View {
   func draggableRepository(
     id: Repository.ID,
     isEnabled: Bool,
-    beginDrag: @escaping () -> Void
+    beginDrag: @escaping () -> Void,
+    endDrag: @escaping @MainActor () -> Void = {}
   ) -> some View {
     if isEnabled {
       self.onDrag {
         beginDrag()
+        SidebarDragEndMonitor.armWhenUnsupported(endDrag)
         return SidebarDragProvider.repository(id: id)
       }
     } else {
@@ -323,16 +325,80 @@ extension View {
   func draggableWorktree(
     id: Worktree.ID,
     isEnabled: Bool,
-    beginDrag: @escaping () -> Void
+    beginDrag: @escaping () -> Void,
+    endDrag: @escaping @MainActor () -> Void = {}
   ) -> some View {
     if isEnabled {
       self.onDrag {
         beginDrag()
+        SidebarDragEndMonitor.armWhenUnsupported(endDrag)
         return SidebarDragProvider.worktree(id: id)
       }
     } else {
       self
     }
+  }
+
+  /// Whether the drag session has ended, reported by `onDragSessionUpdated` on macOS 26 only.
+  /// macOS 15 gets the same end-of-drag cleanup from `SidebarDragEndMonitor` instead.
+  @ViewBuilder
+  func worktreeDragSessionUpdates(
+    _ onSession: @escaping @MainActor (_ draggedIDs: Set<Worktree.ID>, _ didEnd: Bool) -> Void
+  ) -> some View {
+    #if PROWL_LIQUID_GLASS
+    self.onDragSessionUpdated { session in
+      // Data transfer can finish before the drag becomes active on macOS.
+      let didEnd: Bool =
+        if case .ended = session.phase {
+          true
+        } else {
+          false
+        }
+      onSession(Set(session.draggedItemIDs(for: Worktree.ID.self)), didEnd)
+    }
+    #else
+    self
+    #endif
+  }
+
+  @ViewBuilder
+  func sidebarDragSessionEnded(_ onEnd: @escaping @MainActor () -> Void) -> some View {
+    #if PROWL_LIQUID_GLASS
+    self.onDragSessionUpdated { session in
+      // Data transfer can finish before the drag becomes active on macOS.
+      if case .ended = session.phase {
+        onEnd()
+      }
+    }
+    #else
+    self
+    #endif
+  }
+}
+
+/// macOS 15 has no `onDragSessionUpdated`, so a drag that ends without a drop would leave the
+/// sidebar's drag state set. One mouse-up monitor per drag clears it after the drop handlers
+/// for that mouse-up have run.
+@MainActor
+private enum SidebarDragEndMonitor {
+  private static var monitor: Any?
+
+  static func armWhenUnsupported(_ onEnd: @escaping @MainActor () -> Void) {
+    #if !PROWL_LIQUID_GLASS
+    if let monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+    monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+      DispatchQueue.main.async {
+        if let monitor = SidebarDragEndMonitor.monitor {
+          NSEvent.removeMonitor(monitor)
+          SidebarDragEndMonitor.monitor = nil
+        }
+        onEnd()
+      }
+      return event
+    }
+    #endif
   }
 }
 

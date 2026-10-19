@@ -7,6 +7,7 @@ import Testing
 /// S3b decodes Copilot, Droid, and Qoder through the Claude-shaped path. Their real
 /// payloads were captured from Copilot CLI 1.0.80, Factory Droid 0.202.0, and Qoder CLI
 /// 1.1.29 (docs-ai 064.008).
+@MainActor
 struct AgentS3bHookPayloadTests {
   private static let s3bRuntimes: [AgentNativeHookRuntime] = [.copilot, .droid, .qoder]
 

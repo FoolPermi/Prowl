@@ -232,7 +232,7 @@ Liquid Glass surfaces, the shared toolbar background, and the on-device branch-n
 
 ## For Developers
 
-A personal fork of [Supacode](https://github.com/supabitapp/supacode), built on [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [libghostty](https://github.com/ghostty-org/ghostty), maintained for daily use. Requires [mise](https://mise.jdx.dev/) for dev tooling.
+A personal fork of [Supacode](https://github.com/supabitapp/supacode), built on [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [libghostty](https://github.com/ghostty-org/ghostty), maintained for daily use. Requires [mise](https://mise.jdx.dev/) for dev tooling and Xcode 16.4 or later; Liquid Glass and the on-device branch-name model additionally need Xcode 26 and macOS 26. Dependencies are pinned to exact versions so the project still builds with Swift 6.1 — see `docs-ai/083-macos-15-support/000-plan.md`.
 
 ### First build from a fresh clone
 

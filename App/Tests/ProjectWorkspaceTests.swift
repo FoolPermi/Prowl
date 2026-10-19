@@ -238,11 +238,9 @@ struct ProjectWorkspaceTests {
     let appLinkPath = rootURL.appending(path: "App-Repo").path(percentEncoded: false)
     let apiLinkPath = rootURL.appending(path: "App-Repo-2").path(percentEncoded: false)
     #expect(
-      URL(fileURLWithPath: appLinkPath).resolvingSymlinksInPath().path(percentEncoded: false)
-        == appPath)
+      normalizedTestPath(URL(fileURLWithPath: appLinkPath).resolvingSymlinksInPath()) == appPath)
     #expect(
-      URL(fileURLWithPath: apiLinkPath).resolvingSymlinksInPath().path(percentEncoded: false)
-        == apiPath)
+      normalizedTestPath(URL(fileURLWithPath: apiLinkPath).resolvingSymlinksInPath()) == apiPath)
   }
 
   @Test func createWorkspaceMaterializesRemoteCloneAndBareWorktree() async throws {
@@ -794,7 +792,7 @@ struct ProjectWorkspaceTests {
       ]
     )
     let commands = LockIsolated<[ProjectWorkspaceGitCommand]>([])
-    let apiPath = rootURL.appending(path: "api").standardizedFileURL.path(percentEncoded: false)
+    let apiPath = normalizedTestPath(rootURL.appending(path: "api"))
     let failures = await ProjectWorkspace.removeWorktrees(
       workspace,
       rootURL: rootURL,
@@ -806,7 +804,7 @@ struct ProjectWorkspaceTests {
     #expect(failures.isEmpty)
     #expect(
       commands.value.map(\.arguments) == [
-        ["-C", bareURL.path(percentEncoded: false), "worktree", "remove", "--force", apiPath]
+        ["-C", normalizedTestPath(bareURL), "worktree", "remove", "--force", apiPath]
       ])
     // removeWorktrees must leave the folder and the linked source intact.
     #expect(FileManager.default.fileExists(atPath: rootURL.path(percentEncoded: false)))
@@ -840,7 +838,7 @@ struct ProjectWorkspaceTests {
       ]
     )
     let commands = LockIsolated<[ProjectWorkspaceGitCommand]>([])
-    let apiPath = rootURL.appending(path: "api").standardizedFileURL.path(percentEncoded: false)
+    let apiPath = normalizedTestPath(rootURL.appending(path: "api"))
     let failures = await ProjectWorkspace.removeWorktrees(
       workspace,
       rootURL: rootURL,
@@ -849,7 +847,7 @@ struct ProjectWorkspaceTests {
       }
     )
 
-    let barePath = bareURL.path(percentEncoded: false)
+    let barePath = normalizedTestPath(bareURL)
     #expect(failures.isEmpty)
     // Branch deletion is routed through GitClient's guarded entry point, never
     // the workspace git runner — so no `branch -D` is issued here.

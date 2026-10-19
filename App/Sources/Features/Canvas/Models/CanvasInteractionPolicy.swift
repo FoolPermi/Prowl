@@ -10,6 +10,7 @@ enum CanvasInteractionPolicy {
   /// has a hovered link. Only `visibleLeaves()` are scanned: a pane hidden by
   /// split zoom can otherwise retain a stale `mouseOverLink` and incorrectly
   /// disable the selection shield for the visible pane.
+  @MainActor
   static func hasHoveredLink(in tree: SplitTree<GhosttySurfaceView>) -> Bool {
     tree.visibleLeaves().contains {
       $0.bridge.state.mouseOverLink?.isEmpty == false

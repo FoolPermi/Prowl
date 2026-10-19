@@ -122,6 +122,7 @@ enum OpenWorktreeAction: CaseIterable, Identifiable {
   // cached values shouldn't cross threads in the first place.)
   @MainActor private static var menuIconCache: [String: MenuIcon] = [:]
 
+  @MainActor
   var menuIcon: MenuIcon? {
     switch self {
     case .editor:
@@ -139,6 +140,7 @@ enum OpenWorktreeAction: CaseIterable, Identifiable {
     }
   }
 
+  @MainActor
   private static func resizedIcon(_ image: NSImage, size: CGSize) -> NSImage {
     let newImage = NSImage(size: size)
     newImage.lockFocus()
@@ -359,6 +361,7 @@ enum OpenWorktreeAction: CaseIterable, Identifiable {
     return (projectActions + defaultPriority).first(where: isInstalled) ?? .finder
   }
 
+  @MainActor
   func perform(with worktree: Worktree, onError: @escaping @MainActor @Sendable (OpenActionError) -> Void) {
     let actionTitle = title
     switch self {

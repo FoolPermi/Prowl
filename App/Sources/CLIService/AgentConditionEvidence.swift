@@ -67,6 +67,7 @@ enum AgentConditionEvidence {
       self.state = state
     }
 
+    @MainActor
     init(snapshot: AgentConditionSnapshot) {
       self.init(
         revision: snapshot.revision,

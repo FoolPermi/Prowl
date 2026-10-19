@@ -121,12 +121,7 @@ struct SidebarListView: View {
       } action: { newHeight in
         sidebarHeight = newHeight
       }
-      .onDragSessionUpdated { session in
-        // Data transfer can finish before the drag becomes active on macOS.
-        if case .ended = session.phase {
-          endSidebarDrag()
-        }
-      }
+      .sidebarDragSessionEnded { endSidebarDrag() }
       .safeAreaInset(edge: .top, spacing: 0) {
         topSegmentBar
       }
@@ -371,7 +366,8 @@ struct SidebarListView: View {
             isEnabled: !model.isRemoving,
             beginDrag: {
               beginSidebarDrag(repositoryID: model.repositoryID)
-            }
+            },
+            endDrag: { endSidebarDrag() }
           )
         }
 
@@ -401,7 +397,8 @@ struct SidebarListView: View {
           isEnabled: model.isReorderable,
           beginDrag: {
             beginSidebarDrag(repositoryID: model.id)
-          }
+          },
+          endDrag: { endSidebarDrag() }
         )
 
       case .listHeader, .archivedWorktrees:

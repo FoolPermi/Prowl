@@ -237,6 +237,7 @@ struct AgentEntryTitleCoalescingTests {
   /// clock. These tests exercise the entry-level coalescing, so each title is
   /// stamped far enough apart that the tab layer never withholds one and the
   /// two mechanisms stay independently testable.
+  @MainActor
   private final class TitleClock {
     private var now = Date(timeIntervalSince1970: 0)
 
@@ -246,6 +247,7 @@ struct AgentEntryTitleCoalescingTests {
     }
   }
 
+  @MainActor
   private struct Fixture {
     let state: WorktreeTerminalState
     let tabId: TerminalTabID

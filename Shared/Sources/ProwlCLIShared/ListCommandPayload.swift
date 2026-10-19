@@ -52,8 +52,8 @@ public struct ListCommandItem: Codable, Equatable {
   }
 }
 
-public struct ListCommandWorktree: Codable, Equatable {
-  public enum Kind: String, Codable, Equatable {
+public struct ListCommandWorktree: Codable, Equatable, Sendable {
+  public enum Kind: String, Codable, Equatable, Sendable {
     case git
     case plain
     case workspace
@@ -128,8 +128,8 @@ public struct ListCommandPane: Codable, Equatable {
   }
 }
 
-public struct ListCommandTask: Codable, Equatable {
-  public enum Status: String, Codable, Equatable {
+public struct ListCommandTask: Codable, Equatable, Sendable {
+  public enum Status: String, Codable, Equatable, Sendable {
     case running
     case idle
   }

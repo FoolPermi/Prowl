@@ -158,11 +158,7 @@ struct ShortcutSettingsEditor: View {
       List {
         ForEach(visibleGroups) { group in
           Section {
-            ForEach(commands(for: group), id: \.id) { command in
-              row(for: command)
-                .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
-                .listRowBackground(rowBackground(for: command.id))
-            }
+            commandRows(for: group)
           } header: {
             HStack(alignment: .center, spacing: 8) {
               Text(group.title)
@@ -189,6 +185,14 @@ struct ShortcutSettingsEditor: View {
       .environment(\.defaultMinListRowHeight, 32)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+
+  private func commandRows(for group: ShortcutGroup) -> some View {
+    ForEach(commands(for: group), id: \.id) { command in
+      row(for: command)
+        .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
+        .listRowBackground(rowBackground(for: command.id))
+    }
   }
 
   @ViewBuilder

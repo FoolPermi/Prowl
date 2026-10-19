@@ -228,7 +228,14 @@ extension GhosttySurfaceView {
     }
   }
 
-  override func doCommand(by selector: Selector) {
+  // AppKit sends this on the main thread; the SDK's requirement is not actor-isolated.
+  nonisolated override func doCommand(by selector: Selector) {
+    MainActor.assumeIsolated {
+      performCommand(selector)
+    }
+  }
+
+  private func performCommand(_ selector: Selector) {
     if let lastPerformKeyEvent,
       let current = NSApp.currentEvent,
       lastPerformKeyEvent == current.timestamp

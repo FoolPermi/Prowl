@@ -17,6 +17,7 @@ struct RemoteAgentDetectionTests {
   /// snapshot stale between the test's steps.
   private static let uptime: TimeInterval = 1_000
 
+  @MainActor
   private struct Fixture {
     let state: WorktreeTerminalState
     let tabID: TerminalTabID

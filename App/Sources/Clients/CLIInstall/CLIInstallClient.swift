@@ -66,6 +66,20 @@ struct CLIInstallError: Error, Equatable, Sendable, LocalizedError {
 
 let cliDefaultInstallPath = URL(fileURLWithPath: "/usr/local/bin/prowl")
 
+/// The app bundle that ships the CLI, located through the app's own code instead of
+/// `Bundle.main`, which is the test runner in some parallel test hosts.
+private enum BundledCLILocator {
+  private final class Token {}
+
+  static var url: URL? {
+    // Build the resources path from the app's own bundle URL: `Bundle.resourceURL` is relative
+    // in the Swift Testing host, where only `bundleURL` resolves to the app on disk.
+    Bundle(for: Token.self).bundleURL
+      .appendingPathComponent("Contents/Resources", isDirectory: true)
+      .appendingPathComponent("prowl-cli/prowl", isDirectory: false)
+  }
+}
+
 struct CLIInstallClient: Sendable {
   var bundledCLIURL: @Sendable () -> URL?
   var installationStatus: @Sendable (_ installPath: URL) -> CLIInstallStatus
@@ -88,10 +102,10 @@ struct CLIInstallClient: Sendable {
 extension CLIInstallClient: DependencyKey {
   static let liveValue = CLIInstallClient(
     bundledCLIURL: {
-      Bundle.main.resourceURL?.appendingPathComponent("prowl-cli/prowl")
+      BundledCLILocator.url
     },
     installationStatus: { installPath in
-      let bundledURL = Bundle.main.resourceURL?.appendingPathComponent("prowl-cli/prowl")
+      let bundledURL = BundledCLILocator.url
       return SymlinkInstaller.status(
         linkPath: installPath.path(percentEncoded: false),
         source: bundledURL?.path(percentEncoded: false) ?? ""
@@ -101,7 +115,7 @@ extension CLIInstallClient: DependencyKey {
       CLIInstallClient.isExecutableCommand(at: installPath.path(percentEncoded: false))
     },
     install: { installPath in
-      guard let bundledURL = Bundle.main.resourceURL?.appendingPathComponent("prowl-cli/prowl") else {
+      guard let bundledURL = BundledCLILocator.url else {
         throw CLIInstallError(message: String(localized: "Could not locate bundled CLI binary."))
       }
       let bundledPath = bundledURL.path(percentEncoded: false)

@@ -618,7 +618,7 @@ func agentProfileLaunchItems(
     let placement = profile.id == recommendedID ? String(localized: "Recommended · ") : ""
     // Same soft availability judgment as the Agents popover — surfaced in the
     // subtitle, never blocking activation (docs-ai 053/005).
-    let warning = launchWarning(profile)
+    let warning = MainActor.assumeIsolated { launchWarning(profile) }
     let detail =
       warning.map { "\($0) · \(worktree.name)" }
       ?? String(

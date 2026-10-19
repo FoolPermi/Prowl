@@ -125,7 +125,18 @@ final class GhosttySurfaceScrollView: NSView {
     fatalError("init(coder:) is not supported")
   }
 
+  #if compiler(>=6.2)
   isolated deinit {
+    removeObservers()
+  }
+  #else
+  // Swift 6.1 has no isolated `deinit`; AppKit releases views on the main thread.
+  deinit {
+    MainActor.assumeIsolated { removeObservers() }
+  }
+  #endif
+
+  private func removeObservers() {
     for observer in observers {
       NotificationCenter.default.removeObserver(observer)
     }

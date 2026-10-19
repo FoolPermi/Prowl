@@ -3,6 +3,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct WorktreeTerminalStateFontSizeTests {
   @Test func tabContextUsesDefaultFontSizeOnly() {
     let resolvedWithDefault = WorktreeTerminalState.resolvedFontSizeForNewSurface(

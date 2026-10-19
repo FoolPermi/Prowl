@@ -8,16 +8,18 @@ import SwiftUI
 /// title-removing toolbar goes through this file. Two gates are needed, and each one
 /// has a different job:
 ///
-/// - `#if compiler(>=6.2)`: an SDK older than the macOS 26 SDK does not declare
+/// - `#if PROWL_LIQUID_GLASS`: an SDK older than the macOS 26 SDK does not declare
 ///   `glassEffect`, `ToolbarSpacer`, `sharedBackgroundVisibility`, or
 ///   `toolbar(removing:)` at all, so the symbols must not appear in the source that
-///   such a toolchain compiles.
+///   such an SDK compiles. `App/Config/App.xcconfig` defines the condition from the
+///   selected SDK; a compiler-version check cannot stand in for it, because a Swift 6.2
+///   compiler also builds the app against the macOS 15 SDK.
 /// - `#available(macOS 26.0, *)`: a binary built against the macOS 26 SDK still runs
 ///   on macOS 15, where the system must not draw Liquid Glass.
 enum LiquidGlass {
   /// `true` when the running system draws Liquid Glass.
   static var isAvailable: Bool {
-    #if compiler(>=6.2)
+    #if PROWL_LIQUID_GLASS
     if #available(macOS 26.0, *) { return true }
     #endif
     return false
@@ -31,7 +33,7 @@ extension View {
   /// surface behind it, matching the way `glassEffect` layers over a fill.
   @ViewBuilder
   func prowlGlass<S: Shape>(_ shape: S, interactive: Bool = false) -> some View {
-    #if compiler(>=6.2)
+    #if PROWL_LIQUID_GLASS
     if #available(macOS 26.0, *) {
       if interactive {
         glassEffect(.regular.interactive(), in: shape)
@@ -53,7 +55,7 @@ extension View {
 /// empty item there instead of a visible gap.
 struct ToolbarGroupSpacer: ToolbarContent {
   var body: some ToolbarContent {
-    #if compiler(>=6.2)
+    #if PROWL_LIQUID_GLASS
     if #available(macOS 26.0, *) {
       ToolbarSpacer(.fixed)
     } else {
@@ -72,7 +74,7 @@ extension ToolbarContent {
   /// modifier is a no-op there and needs no replacement.
   @ToolbarContentBuilder
   func prowlHidingSharedBackground() -> some ToolbarContent {
-    #if compiler(>=6.2)
+    #if PROWL_LIQUID_GLASS
     if #available(macOS 26.0, *) {
       sharedBackgroundVisibility(.hidden)
     } else {
@@ -90,7 +92,7 @@ extension View {
   /// Earlier systems hide the title through the window instead; see `ToolbarTitleHider`.
   @ViewBuilder
   func prowlRemovingToolbarTitle() -> some View {
-    #if compiler(>=6.2)
+    #if PROWL_LIQUID_GLASS
     if #available(macOS 26.0, *) {
       toolbar(removing: .title)
     } else {

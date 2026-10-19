@@ -119,7 +119,7 @@ struct CodexEffectiveNotifyResolverTests {
         environment: [:]
       )
       #expect(
-        context.effectiveCWD.path(percentEncoded: false)
+        context.effectiveCWD.path(percentEncoded: false).trimmingTrailingSlashForTest
           == child.standardizedFileURL.path(percentEncoded: false).trimmingTrailingSlashForTest
       )
     }
@@ -145,7 +145,7 @@ struct CodexEffectiveNotifyResolverTests {
       promptArgumentIndex: 4
     )
 
-    #expect(context.effectiveCWD == base.standardizedFileURL)
+    #expect(sameURL(context.effectiveCWD, base))
     #expect(context.configOverrides.isEmpty)
   }
 
@@ -185,10 +185,16 @@ struct CodexEffectiveNotifyResolverTests {
       environment: ["CODEX_HOME": "/must/not/win"]
     )
 
-    #expect(context.codexHome == home.standardizedFileURL)
+    #expect(sameURL(context.codexHome, home))
     #expect(context.profileName == "selected")
     #expect(context.configOverrides == ["model=\"x\""])
     #expect(context.explicitNotifyOverride == "notify=[\"/tmp/final\",\"秘密\"]")
+  }
+
+  /// macOS 15's Foundation renders a directory URL with a trailing slash and macOS 26 does not.
+  private func sameURL(_ lhs: URL, _ rhs: URL) -> Bool {
+    lhs.standardizedFileURL.path(percentEncoded: false).trimmingTrailingSlashForTest
+      == rhs.standardizedFileURL.path(percentEncoded: false).trimmingTrailingSlashForTest
   }
 
   private enum ProbeError: Error {

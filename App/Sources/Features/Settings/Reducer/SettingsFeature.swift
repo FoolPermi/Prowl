@@ -607,7 +607,7 @@ struct SettingsFeature {
             }
           }
         }
-        state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
+        state.cliInstallStatus = MainActor.assumeIsolated { cliInstallClient.installationStatus(cliDefaultInstallPath) }
         let result: CLIInstallResultMessage = path.isEmpty ? .uninstalled : .installed(path: path)
         return .send(.delegate(.cliInstallCompleted(result)))
 
@@ -621,15 +621,15 @@ struct SettingsFeature {
             TextState(error.message)
           }
         }
-        state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
+        state.cliInstallStatus = MainActor.assumeIsolated { cliInstallClient.installationStatus(cliDefaultInstallPath) }
         return .send(.delegate(.cliInstallCompleted(.failed(message: error.message))))
 
       case .refreshCLIInstallStatus:
-        state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
+        state.cliInstallStatus = MainActor.assumeIsolated { cliInstallClient.installationStatus(cliDefaultInstallPath) }
         return .none
 
       case .refreshCLIServiceStatus:
-        state.cliServiceStatus = cliServiceStatusClient.current()
+        state.cliServiceStatus = MainActor.assumeIsolated { cliServiceStatusClient.current() }
         return .none
 
       case .refreshDockBadgeAuthorization:

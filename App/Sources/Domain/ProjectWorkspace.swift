@@ -791,7 +791,7 @@ nonisolated struct ProjectWorkspace: Codable, Equatable, Hashable, Sendable {
   ) async -> String? {
     let rootPath = normalizedPath(rootURL, resolvingSymlinks: false)
     let entryURL = entry.resolvedURL(relativeTo: rootURL)
-    let entryPath = entryURL.path(percentEncoded: false)
+    let entryPath = normalizedPath(entryURL, resolvingSymlinks: false)
     guard entryPath.hasPrefix(rootPath + "/") else {
       return String(localized: "\(entryPath) is outside the workspace folder and was left in place.")
     }
@@ -901,6 +901,11 @@ nonisolated struct ProjectWorkspace: Codable, Equatable, Hashable, Sendable {
     return result
   }
 
+  private struct RollbackFileManager: @unchecked Sendable {
+    let value: FileManager
+    init(_ value: FileManager) { self.value = value }
+  }
+
   private struct MaterializationLedger: Sendable {
     var occupiedNames: Set<String> = []
     var createdURLs: [URL] = []
@@ -918,7 +923,8 @@ nonisolated struct ProjectWorkspace: Codable, Equatable, Hashable, Sendable {
     fileManager: FileManager,
     gitRunner: ProjectWorkspaceGitRunner
   ) async {
-    nonisolated(unsafe) let fileManager = fileManager
+    // `FileManager` is not Sendable; the detached task only uses it for this rollback's paths.
+    let fileManager = RollbackFileManager(fileManager)
     let task = Task.detached {
       for command in ledger.cleanupCommands.reversed() {
         do {
@@ -936,12 +942,12 @@ nonisolated struct ProjectWorkspace: Codable, Equatable, Hashable, Sendable {
             : [])
       for url in removableURLs {
         let path = url.path(percentEncoded: false)
-        guard fileManager.fileExists(atPath: path) || (try? url.checkResourceIsReachable()) == true
+        guard fileManager.value.fileExists(atPath: path) || (try? url.checkResourceIsReachable()) == true
         else {
           continue
         }
         do {
-          try fileManager.removeItem(at: url)
+          try fileManager.value.removeItem(at: url)
         } catch {
           log.warning("Workspace rollback could not remove \(path): \(error)")
         }
@@ -970,7 +976,7 @@ nonisolated struct ProjectWorkspace: Codable, Equatable, Hashable, Sendable {
     var failedRemovals: [String] = []
     for entry in workspace.repositories {
       let entryURL = entry.resolvedURL(relativeTo: rootURL)
-      let entryPath = entryURL.path(percentEncoded: false)
+      let entryPath = normalizedPath(entryURL, resolvingSymlinks: false)
       guard entryPath.hasPrefix(rootPath + "/") else {
         continue
       }

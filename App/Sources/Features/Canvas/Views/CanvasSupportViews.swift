@@ -620,13 +620,15 @@ struct CardScreenGeometry {
 /// per-modifier interpolation, which only reached the Animatable terminal and
 /// left offset/scale to snap (the "grows from the center" / "no animation" bugs).
 struct AnimatedExpandableCard<Content: View>: View, Animatable {
-  var progress: CGFloat
+  /// `Animatable.animatableData` is not actor-isolated, so the animated value is the one
+  /// piece of state this view exposes outside the main actor; SwiftUI only writes it on main.
+  nonisolated(unsafe) var progress: CGFloat
   var collapsed: CardScreenGeometry
   var expanded: CardScreenGeometry
   let titleBarHeight: CGFloat
   @ViewBuilder let content: (CGSize) -> Content
 
-  var animatableData: CGFloat {
+  nonisolated var animatableData: CGFloat {
     get { progress }
     set { progress = newValue }
   }

@@ -41,10 +41,14 @@ final class GhosttyRuntime {
     }
   }
 
-  var config: ghostty_config_t?
-  private(set) var app: ghostty_app_t?
+  // Swift 6.1's non-isolated `deinit` may only touch Sendable stored properties; the C handles
+  // are created and freed on the main thread and in `deinit`.
+  nonisolated(unsafe) var config: ghostty_config_t?
+  nonisolated(unsafe) private(set) var app: ghostty_app_t?
   private(set) var configSource: GhosttyConfigSource
-  var observers: [NSObjectProtocol] = []
+  /// Swift 6.1's non-isolated `deinit` may only touch Sendable stored properties; observer
+  /// tokens are only read on the main thread and in `deinit`.
+  nonisolated(unsafe) var observers: [NSObjectProtocol] = []
   var surfaceRefs: [SurfaceReference] = []
   var lastColorScheme: ghostty_color_scheme_e?
   var currentColorScheme: ColorScheme?
@@ -189,7 +193,29 @@ final class GhosttyRuntime {
       })
   }
 
+  #if compiler(>=6.2)
   isolated deinit {
+    releaseRuntime()
+  }
+  #else
+  // Swift 6.1 has no isolated `deinit`. A deinit already has exclusive access to its own stored
+  // properties, and every call below is non-isolated, so the cleanup needs no actor hop (the
+  // runtime may be released off the main actor, and an `assumeIsolated` hop would trap).
+  deinit {
+    let center = NotificationCenter.default
+    for observer in observers {
+      center.removeObserver(observer)
+    }
+    if let app {
+      ghostty_app_free(app)
+    }
+    if let config {
+      ghostty_config_free(config)
+    }
+  }
+  #endif
+
+  private func releaseRuntime() {
     let center = NotificationCenter.default
     for observer in observers {
       center.removeObserver(observer)

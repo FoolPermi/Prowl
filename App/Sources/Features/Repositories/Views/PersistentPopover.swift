@@ -51,7 +51,7 @@ private struct PersistentPopoverAnchor<PopoverContent: View>: NSViewRepresentabl
     Coordinator(isPresented: $isPresented)
   }
 
-  final class Coordinator: NSObject, NSPopoverDelegate {
+  final class Coordinator: NSObject, @preconcurrency NSPopoverDelegate {
     private(set) var popover: NSPopover?
     private var hostingController: NSHostingController<AnyView>?
     private let isPresented: Binding<Bool>
@@ -99,13 +99,11 @@ private struct PersistentPopoverAnchor<PopoverContent: View>: NSViewRepresentabl
       ref?.close()
     }
 
-    nonisolated func popoverDidClose(_ notification: Notification) {
-      Task { @MainActor in
-        self.popover = nil
-        self.hostingController = nil
-        if self.isPresented.wrappedValue {
-          self.isPresented.wrappedValue = false
-        }
+    func popoverDidClose(_ notification: Notification) {
+      popover = nil
+      hostingController = nil
+      if isPresented.wrappedValue {
+        isPresented.wrappedValue = false
       }
     }
   }

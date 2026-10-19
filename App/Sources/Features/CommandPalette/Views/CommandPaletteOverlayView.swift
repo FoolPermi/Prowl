@@ -868,28 +868,42 @@ private struct ShortcutSymbolsView: View {
 }
 
 private struct CommandPaletteShortcutHandler: View {
+  /// The palette shows at most five rows, so the ⌘1–⌘5 carriers are unrolled instead of built
+  /// with `ForEach`: the Swift 6.1 type checker otherwise resolves `ForEach` to Charts' overload
+  /// in this file and fails with a `ChartContentBuilder` error.
   let items: [CommandPaletteItem]
   let activate: (CommandPaletteItem.ID) -> Void
 
   var body: some View {
-    Group {
-      ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-        shortcutButton(index: index, itemID: item.id)
-      }
+    ZStack {
+      ForEachSlot(items: items, index: 0, activate: activate)
+      ForEachSlot(items: items, index: 1, activate: activate)
+      ForEachSlot(items: items, index: 2, activate: activate)
+      ForEachSlot(items: items, index: 3, activate: activate)
+      ForEachSlot(items: items, index: 4, activate: activate)
     }
     .frame(width: 0, height: 0)
     .accessibilityHidden(true)
   }
+}
 
-  private func shortcutButton(index: Int, itemID: CommandPaletteItem.ID) -> some View {
-    Button {
-      activate(itemID)
-    } label: {
-      Color.clear
+private struct ForEachSlot: View {
+  let items: [CommandPaletteItem]
+  let index: Int
+  let activate: (CommandPaletteItem.ID) -> Void
+
+  var body: some View {
+    if index < items.count {
+      Button {
+        activate(items[index].id)
+      } label: {
+        Color.clear
+      }
+      .buttonStyle(.plain)
+      .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
     }
-    .buttonStyle(.plain)
-    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
   }
+
 }
 
 private func commandPaletteShortcutSymbols(for index: Int) -> [String] {

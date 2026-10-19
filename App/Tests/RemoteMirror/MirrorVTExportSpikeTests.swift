@@ -16,14 +16,15 @@ struct MirrorVTExportSpikeTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let rowCount = Int(ProcessInfo.processInfo.environment["PROWL_VT_EXPORT_ROWS"] ?? "500") ?? 500
     try #require(rowCount > 50)
-    let contents =
-      (1...rowCount).map { row in
-        "\u{1B}[38;2;80;190;240mROW \(row)\u{1B}[0m  "
-          + "\u{1B}[1;33m粗体 Bold\u{1B}[0m │ 界🙂 │ "
-          + "\u{1B}[48;2;80;40;100m背景 Background\u{1B}[0m "
-          + (row.isMultiple(of: 7) ? String(repeating: "长行 wrap 界🙂 ", count: 12) : "table │ value")
-          + "\r\n"
-      }.joined() + "END-OF-FIXTURE"
+    func row(_ number: Int) -> String {
+      let index = "\u{1B}[38;2;80;190;240mROW \(number)\u{1B}[0m  "
+      let bold = "\u{1B}[1;33m粗体 Bold\u{1B}[0m │ 界🙂 │ "
+      let background = "\u{1B}[48;2;80;40;100m背景 Background\u{1B}[0m "
+      let filler =
+        number.isMultiple(of: 7) ? String(repeating: "长行 wrap 界🙂 ", count: 12) : "table │ value"
+      return index + bold + background + filler + "\r\n"
+    }
+    let contents: String = (1...rowCount).map(row).joined() + "END-OF-FIXTURE"
     try Data(contents.utf8).write(to: directory.appending(path: "source.vt"))
     let host = try Terminal(
       directory: directory, file: "source.vt", title: "Host — native scrollback")
@@ -78,6 +79,7 @@ struct MirrorVTExportSpikeTests {
     var path: String?
   }
 
+  @MainActor
   private final class Terminal {
     let window: NSWindow
     let view: NSView

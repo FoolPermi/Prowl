@@ -422,14 +422,16 @@ struct CanvasCardView: View {
 
 private struct AnimatedTerminalSplitTreeView: View, Animatable {
   let tree: SplitTree<GhosttySurfaceView>
-  var size: CGSize
+  /// `Animatable.animatableData` is not actor-isolated, so the animated size is exposed
+  /// outside the main actor; SwiftUI only writes it on main.
+  nonisolated(unsafe) var size: CGSize
   let activeSurfaceID: UUID?
   let unfocusedSplitOverlay: (fill: Color?, opacity: Double)
   var splitDivider: (color: Color?, width: CGFloat?)
   let hasNotification: (UUID) -> Bool
   let action: (TerminalSplitTreeView.Operation) -> Void
 
-  var animatableData: AnimatablePair<CGFloat, CGFloat> {
+  nonisolated var animatableData: AnimatablePair<CGFloat, CGFloat> {
     get { AnimatablePair(size.width, size.height) }
     set {
       size = CGSize(width: newValue.first, height: newValue.second)

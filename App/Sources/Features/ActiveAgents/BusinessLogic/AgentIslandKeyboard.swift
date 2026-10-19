@@ -187,8 +187,10 @@ final class AgentIslandGlobalHotKeys {
   private static let signature: OSType = 0x5052_574C  // PRWL
   private static let logger = ProwlLogger("AgentIsland")
 
-  private var eventHandler: EventHandlerRef?
-  private var hotKeys: [UInt32: EventHotKeyRef] = [:]
+  // Swift 6.1's non-isolated `deinit` may only touch Sendable stored properties; both are only
+  // read on the main thread and in `deinit`.
+  nonisolated(unsafe) private var eventHandler: EventHandlerRef?
+  nonisolated(unsafe) private var hotKeys: [UInt32: EventHotKeyRef] = [:]
   private let action: @MainActor (AgentIslandGlobalHotKeyCommand) -> Void
 
   init(action: @escaping @MainActor (AgentIslandGlobalHotKeyCommand) -> Void) {
@@ -234,9 +236,22 @@ final class AgentIslandGlobalHotKeys {
     }
   }
 
+  #if compiler(>=6.2)
   isolated deinit {
     stop()
   }
+  #else
+  // Swift 6.1 has no isolated `deinit`; unregistering the Carbon hot keys is non-isolated.
+  deinit {
+    for hotKey in hotKeys.values {
+      UnregisterEventHotKey(hotKey)
+    }
+    hotKeys.removeAll()
+    if let eventHandler {
+      RemoveEventHandler(eventHandler)
+    }
+  }
+  #endif
 
   func register(binding: Keybinding?) -> IslandHotKeyRegistrationResult {
     register(command: .toggleRoster, binding: binding)

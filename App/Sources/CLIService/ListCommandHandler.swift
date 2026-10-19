@@ -78,11 +78,10 @@ final class ListCommandHandler: CommandHandler {
     await handle(envelope: envelope, context: CLICommandContext())
   }
 
-  // swiftlint:disable:next async_without_await
   func handle(envelope: CommandEnvelope, context: CLICommandContext) async -> CommandResponse {
     do {
-      let snapshot = try snapshotProvider()
-      let caller = resolveCaller(context).map {
+      let snapshot = try await snapshotProvider()
+      let caller = await resolveCaller(context).map {
         ListCommandCaller(paneID: $0.surfaceID.uuidString, worktreeID: $0.worktreeID)
       }
       let payload = makePayload(from: snapshot, includeHandles: envelope.output == .text, caller: caller)

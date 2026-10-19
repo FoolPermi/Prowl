@@ -607,6 +607,7 @@ private struct ListenAddressPopUp: NSViewRepresentable {
 
   func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
+  @MainActor
   final class Coordinator: NSObject {
     var parent: ListenAddressPopUp
     init(parent: ListenAddressPopUp) { self.parent = parent }

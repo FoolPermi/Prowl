@@ -29,6 +29,7 @@ extension RepositoriesFeature.State {
   /// `customTitles` is an optional per-repo display-name dictionary;
   /// when an entry exists the group's `name` uses it instead of
   /// `repository.name`. Defaults to empty for legacy callers/tests.
+  @MainActor
   func toolbarNotificationGroups(
     terminalManager: WorktreeTerminalManager,
     customTitles: [Repository.ID: String] = [:]
@@ -59,6 +60,7 @@ extension RepositoriesFeature.State {
     return groups
   }
 
+  @MainActor
   private func worktreeNotificationGroups(
     repository: Repository,
     terminalManager: WorktreeTerminalManager

@@ -3,6 +3,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct SnapshotRestoreTests {
   @Test func resolveSnapshotWorkingDirectoryAcceptsAbsolutePathWithinWorktree() throws {
     let fileManager = FileManager.default

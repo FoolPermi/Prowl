@@ -6,7 +6,7 @@ import Testing
 /// RAII helper: creates a unique scratch directory under `$TMPDIR` and
 /// removes it on deinit so test runs don't accumulate orphan folders
 /// between invocations (we ship to `make test` repeatedly during dev).
-private final class ScratchDirectory {
+private final class ScratchDirectory: @unchecked Sendable {
   let url: URL
 
   init(prefix: String) {

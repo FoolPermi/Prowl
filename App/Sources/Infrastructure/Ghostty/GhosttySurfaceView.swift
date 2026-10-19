@@ -80,6 +80,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
     }
   }
 
+  @MainActor
   final class CachedValue<T> {
     private var value: T?
     private let fetch: () -> T
@@ -374,7 +375,18 @@ final class GhosttySurfaceView: NSView, Identifiable {
     fatalError("init(coder:) is not supported")
   }
 
+  #if compiler(>=6.2)
   isolated deinit {
+    releaseSurfaceResources()
+  }
+  #else
+  // Swift 6.1 has no isolated `deinit`; AppKit releases surfaces on the main thread.
+  deinit {
+    MainActor.assumeIsolated { releaseSurfaceResources() }
+  }
+  #endif
+
+  private func releaseSurfaceResources() {
     if let eventMonitor {
       NSEvent.removeMonitor(eventMonitor)
     }

@@ -54,28 +54,34 @@ enum MainWindowSurface {
     let isVisible: Bool
   }
 
+  @MainActor
   static func snapshots(in windows: [NSWindow]) -> [Snapshot] {
     windows.map(snapshot(for:))
   }
 
+  @MainActor
   static func mainWindowCandidate(in windows: [NSWindow]) -> NSWindow? {
     let snapshots = snapshots(in: windows)
     guard let index = mainWindowIndex(in: snapshots) else { return nil }
     return windows[index]
   }
 
+  @MainActor
   static func hasVisibleMainWindow(in windows: [NSWindow]) -> Bool {
     hasVisibleMainWindow(in: snapshots(in: windows))
   }
 
+  @MainActor
   static func mainWindowCount(in windows: [NSWindow]) -> Int {
     mainWindowCount(in: snapshots(in: windows))
   }
 
+  @MainActor
   static func visibleMainWindowCount(in windows: [NSWindow]) -> Int {
     visibleMainWindowCount(in: snapshots(in: windows))
   }
 
+  @MainActor
   static func visibleWindowCount(in windows: [NSWindow]) -> Int {
     visibleWindowCount(in: snapshots(in: windows))
   }
@@ -100,6 +106,7 @@ enum MainWindowSurface {
     snapshots.count(where: \.isVisible)
   }
 
+  @MainActor
   private static func snapshot(for window: NSWindow) -> Snapshot {
     Snapshot(identifier: window.identifier?.rawValue, isVisible: window.isVisible)
   }

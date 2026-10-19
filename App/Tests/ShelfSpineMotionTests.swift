@@ -45,10 +45,11 @@ private final class SpineMotionFixture {
   }
 
   private struct ProgressProbe: AnimatableModifier {
-    var progress: CGFloat
+    /// `animatableData` is not actor-isolated; SwiftUI only writes the probe on the main actor.
+    nonisolated(unsafe) var progress: CGFloat
     let recorder: Recorder
 
-    var animatableData: CGFloat {
+    nonisolated var animatableData: CGFloat {
       get { progress }
       set { progress = newValue }
     }

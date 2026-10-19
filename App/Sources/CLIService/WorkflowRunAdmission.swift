@@ -391,6 +391,7 @@ enum WorkflowRunAdmission {
   // MARK: - Bindings
 
   /// Freezes one binding per role, in declaration order, so the first failure names the first role.
+  @MainActor
   private struct RoleBinder {
     let definition: WorkflowDefinition
     let source: WorkflowRunSource

@@ -48,12 +48,20 @@ final class CodexForwardingRecordStore {
     )
   }
 
+  #if compiler(>=6.2)
   isolated deinit {
+    releaseSessionLock()
+  }
+  #else
+  // Swift 6.1 has no isolated `deinit`; a deinit has exclusive access to its own stored
+  // properties, and these calls are non-isolated.
+  deinit {
     if sessionLockDescriptor >= 0 {
       flock(sessionLockDescriptor, LOCK_UN)
       Darwin.close(sessionLockDescriptor)
     }
   }
+  #endif
 
   func create(argv: [String]) throws -> CodexForwardingRecord {
     guard !argv.isEmpty, !argv[0].isEmpty, argv.count <= 128,

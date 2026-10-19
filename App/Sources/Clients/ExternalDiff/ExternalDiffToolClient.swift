@@ -112,7 +112,7 @@ private func runGUICommand(
       target.workingDirectory
     )
   } catch {
-    onError(openError(for: request.tool, error: error))
+    await onError(openError(for: request.tool, error: error))
   }
 }
 
@@ -125,7 +125,7 @@ private func runCustomCommand(
 ) async {
   let template = settings.customCommand.trimmingCharacters(in: .whitespacesAndNewlines)
   guard !template.isEmpty else {
-    onError(
+    await onError(
       OpenActionError(
         title: String(localized: "Custom diff command is empty"),
         message: String(localized: "Add a custom diff command in Settings before opening the diff.")
@@ -149,7 +149,7 @@ private func runCustomCommand(
       target.workingDirectory
     )
   } catch {
-    onError(openError(for: settings.tool, error: error))
+    await onError(openError(for: settings.tool, error: error))
   }
 }
 

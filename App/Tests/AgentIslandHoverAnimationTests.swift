@@ -85,15 +85,20 @@ private final class HoverAnimationFixture {
     var expanded = false
   }
 
-  final class Recorder {
+  /// Written from the probe's non-isolated `animatableData` setter, which SwiftUI only calls on
+  /// the main actor.
+  final class Recorder: @unchecked Sendable {
     var samples: [Double] = []
   }
 
+  @MainActor
   private struct ProgressProbe: AnimatableModifier {
-    var progress: Double
-    let recorder: Recorder
+    /// `animatableData` is not actor-isolated; SwiftUI only writes the probe on the main actor.
+    nonisolated(unsafe) var progress: Double
+    // The setter below is not actor-isolated either; SwiftUI only samples on the main actor.
+    nonisolated(unsafe) let recorder: Recorder
 
-    var animatableData: Double {
+    nonisolated var animatableData: Double {
       get { progress }
       set {
         progress = newValue

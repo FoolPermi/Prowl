@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.1
 
 import PackageDescription
 
@@ -15,10 +15,14 @@ let package = Package(
   ],
   dependencies: [
     .package(name: "ProwlShared", path: "../Shared"),
-    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-    .package(url: "https://github.com/ajevans99/swift-json-schema", from: "0.13.1"),
-    .package(url: "https://github.com/onevcat/Rainbow", from: "4.0.0"),
+    // Pinned exactly for the same reason as App/Project.swift: the newest releases need a
+    // Swift tools version newer than the Swift 6.2 toolchain that macOS 15 can run.
+    .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.7.1"),
+    .package(url: "https://github.com/ajevans99/swift-json-schema", exact: "0.13.1"),
+    .package(url: "https://github.com/onevcat/Rainbow", exact: "4.2.1"),
     .package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2"),
+    .package(url: "https://github.com/swiftlang/swift-syntax", exact: "601.0.0"),
+    .package(url: "https://github.com/apple/swift-collections", exact: "1.2.1"),
   ],
   targets: [
     .executableTarget(

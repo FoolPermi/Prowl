@@ -9,7 +9,7 @@ nonisolated enum MirrorTestPort {
   static func startHost(_ host: MirrorHost) async throws {
     for attempt in 1...3 {
       host.start()
-      for await done in Observations({ !host.isStarting || host.error != nil }) where done { break }
+      for await done in ObservationsCompat({ !host.isStarting || host.error != nil }) where done { break }
       if host.isRunning, host.error == nil { return }
       let occupied = MirrorConnectionFailure.addressInUse.listenerMessage(address: host.address, port: host.port)
       guard attempt < 3, host.error == occupied else {
@@ -31,6 +31,7 @@ nonisolated enum MirrorTestPort {
     return reservation.port
   }
 
+  @MainActor
   static func withRefusedPort(_ body: (UInt16) async throws -> Void) async throws {
     let listener = try boundPort()
     defer { Darwin.close(listener.socket) }

@@ -21,12 +21,13 @@ struct AgentIslandIconCluster: View {
     let overflowCount: Int
   }
 
-  private static let maximumVisibleIcons = 3
+  private nonisolated static let maximumVisibleIcons = 3
   /// Icons overlap by this much so the cluster stays narrow.
-  private static let iconSpacing: CGFloat = -4
+  private nonisolated static let iconSpacing: CGFloat = -4
 
   /// The width of a full cluster. Each icon is a `pointSize + 2` circle with 2pt of padding.
-  static func width(pointSize: CGFloat) -> CGFloat {
+  /// Pure geometry: `AgentIslandNotchLayout` computes its widths from it outside the main actor.
+  nonisolated static func width(pointSize: CGFloat) -> CGFloat {
     let count = CGFloat(maximumVisibleIcons)
     return (pointSize + 6) * count + iconSpacing * (count - 1)
   }
