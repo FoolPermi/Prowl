@@ -92,8 +92,8 @@ enum ListRuntimeSnapshotBuilder {
             WorktreeContext(
               id: worktree.id,
               name: worktree.name,
-              path: worktree.workingDirectory.path(percentEncoded: false),
-              rootPath: worktree.repositoryRootURL.path(percentEncoded: false),
+              path: GitClient.canonicalWorktreePath(worktree.workingDirectory.path(percentEncoded: false)),
+              rootPath: GitClient.canonicalWorktreePath(worktree.repositoryRootURL.path(percentEncoded: false)),
               kind: listCommandKind(for: repository)
             )
           )

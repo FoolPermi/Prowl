@@ -60,7 +60,7 @@ struct GitClient {
       let worktreeURL = URL(fileURLWithPath: entry.path).standardizedFileURL
       let name = entry.branch.isEmpty ? worktreeURL.lastPathComponent : entry.branch
       let detail = Self.relativePath(from: repositoryRootURL, to: worktreeURL)
-      let id = worktreeURL.path(percentEncoded: false)
+      let id = Self.canonicalWorktreePath(worktreeURL.path(percentEncoded: false))
       guard seenWorktreeIDs.insert(id).inserted else {
         return nil
       }
@@ -335,7 +335,7 @@ struct GitClient {
                 }
                 let worktreeURL = URL(fileURLWithPath: pathLine).standardizedFileURL
                 let detail = Self.relativePath(from: repositoryRootURL, to: worktreeURL)
-                let id = worktreeURL.path(percentEncoded: false)
+                let id = Self.canonicalWorktreePath(worktreeURL.path(percentEncoded: false))
                 let resourceValues = try? worktreeURL.resourceValues(forKeys: [
                   .creationDateKey, .contentModificationDateKey,
                 ])

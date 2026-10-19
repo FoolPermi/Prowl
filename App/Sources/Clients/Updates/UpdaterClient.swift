@@ -215,7 +215,12 @@ private func installAndRelaunchChoiceAlert() -> SPUUserUpdateChoice {
 
 extension UpdaterClient: DependencyKey {
   static var liveValue: UpdaterClient {
-    MainActor.assumeIsolated { makeLiveValue() }
+    // The Sparkle driver and delegate are main-actor objects, while reduction or effects may
+    // resolve this dependency off the main actor during launch.
+    if Thread.isMainThread {
+      return MainActor.assumeIsolated { makeLiveValue() }
+    }
+    return DispatchQueue.main.sync { MainActor.assumeIsolated { makeLiveValue() } }
   }
 
   /// The Sparkle driver and delegate are main-actor objects; the dependency is built on main.
