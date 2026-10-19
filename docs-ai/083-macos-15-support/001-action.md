@@ -55,7 +55,9 @@ with Swift 6.1 and keeps the macOS 26 features:
   rendering-timing case below. The mirror suites and the event-monitor suites, which the
   Makefile runs separately, pass in their own run.
 - A single parallel `xcodebuild test` over the whole target trips a `swift-testing` harness
-  assertion ("Test already started") in this toolchain; the partitioned or serial runs pass.
+  assertion ("Test already started") in this toolchain; the partitioned or serial runs pass,
+  so `make test` now passes `-parallel-testing-enabled NO` (`APP_TEST_PARALLEL_ARGS`) to the
+  four app test runs.
 - `swiftlint lint` is clean. `check-workflow-naming` and `check-legacy-naming` pass.
   `check-localization` cannot run on this machine (its scripts need Python 3.10+).
 

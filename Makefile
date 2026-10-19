@@ -462,6 +462,11 @@ test-scripts: # Run tests for the repository's scripts
 # Real I/O deadlines run separately from the bulk suite's main-actor work. A TCA TestStore
 # enqueues all tasks of the process on the main thread while it lives, so in the bulk run a
 # task that blocks on a child process also blocks every test.
+# Swift Testing's XCTest bridge asserts ("Test already started") when the whole target runs in
+# parallel on the Swift 6.1 toolchains used to build this fork; serial runs pass. Set
+# APP_TEST_PARALLEL_ARGS empty to run in parallel (upstream CI's Xcode does).
+APP_TEST_PARALLEL_ARGS ?= -parallel-testing-enabled NO
+
 test-app: ensure-ghostty ensure-project # Run app/unit tests via xcodebuild
 	@set -euo pipefail; \
 	result_root="$(CURRENT_MAKEFILE_DIR)/build/test-results"; \
@@ -476,7 +481,7 @@ test-app: ensure-ghostty ensure-project # Run app/unit tests via xcodebuild
 			set -- -derivedDataPath "$$PROWL_DERIVED_DATA_PATH" "$$@"; \
 		fi; \
 		set +e; \
-		xcodebuild "$$action" -workspace "$(XCODE_WORKSPACE)" -scheme $(APP_SCHEME) -destination "platform=macOS" -resultBundlePath "$$result_bundle" $(TEST_SIGNING_ARGS) -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) -showBuildTimingSummary SWIFT_COMPILATION_MODE=incremental "$$@" 2>&1 | tee "$$result_bundle.log" | tee >(PROWL_TEST_PROGRESS_LABEL="$${result_bundle##*/}" awk -f "$(CURRENT_MAKEFILE_DIR)/scripts/test-progress.awk" >&2) | mise exec -- xcsift -w --format toon; \
+		xcodebuild "$$action" -workspace "$(XCODE_WORKSPACE)" -scheme $(APP_SCHEME) -destination "platform=macOS" -resultBundlePath "$$result_bundle" $(TEST_SIGNING_ARGS) -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) -showBuildTimingSummary SWIFT_COMPILATION_MODE=incremental $(APP_TEST_PARALLEL_ARGS) "$$@" 2>&1 | tee "$$result_bundle.log" | tee >(PROWL_TEST_PROGRESS_LABEL="$${result_bundle##*/}" awk -f "$(CURRENT_MAKEFILE_DIR)/scripts/test-progress.awk" >&2) | mise exec -- xcsift -w --format toon; \
 		local xcodebuild_status=$${PIPESTATUS[0]}; \
 		set -e; \
 		if [ "$$action" = "test" ] && [ -d "$$result_bundle" ]; then \
