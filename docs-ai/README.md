@@ -35,11 +35,10 @@ each is marked as such.
 
 Living documents hosted here:
 
-- `001-fork-bootstrap-and-release-pipeline/release-runbook.md` — fork sync & release runbook
+- `001-fork-bootstrap-and-release-pipeline/release-runbook.md` — release runbook
 - `007-ghostty-embedding-integration/ghostty-fork-sync.md` — Ghostty fork/submodule upgrade runbook
 - `012-keybinding-system/architecture.md` — keybinding system reference
 - `013-prowl-cli/contracts/` — normative CLI contracts
-- `017-upstream-sync-process/upstream-ledger.md` — upstream review ledger (baseline + decisions)
 - `020-observability/runbook.md` — observability/diagnostics runbook
 - `063-agent-workflows/dsl-spec.md` — Agent Workflow DSL (`prowl.workflow/v1`) normative spec
 - `063-agent-workflows/release-plan.md` — release/order plan shared by 063 and 064
@@ -99,7 +98,7 @@ keep the old paths. Use this table to find a file that an old entry names:
 | 014 | [terminal-layout-persistence](014-terminal-layout-persistence/000-plan.md) | 2026-03-31 | Layout snapshot save/restore; font-size persistence; launch races |
 | 015 | [repositories-feature-refactor](015-repositories-feature-refactor/000-plan.md) | 2026-04-03 | TCA decomposition of RepositoriesFeature and later code-health splits |
 | 016 | [dev-build-and-ci-workflow](016-dev-build-and-ci-workflow/000-plan.md) | 2026-04-04 | Build/test tooling, CI parallelism, Debug identity, incremental caching, Shared module boundary, CAS fallback and cache save scope, test hang watchdog |
-| 017 | [upstream-sync-process](017-upstream-sync-process/000-plan.md) | 2026-04-08 | Upstream review discipline, baselines, batch decisions |
+| 017 | [upstream-sync-process](017-upstream-sync-process/000-plan.md) | 2026-04-08 | Upstream review discipline, baselines, batch decisions (retired 2026-10-18) |
 | 018 | [archived-worktrees](018-archived-worktrees/000-plan.md) | 2026-04-09 | Archived worktree discoverability and auto-delete |
 | 019 | [worktree-creation-and-lifecycle](019-worktree-creation-and-lifecycle/000-plan.md) | 2026-04-12 | Creation/merge flows, safe deletion, Add-to-Prowl redesign |
 | 020 | [observability](020-observability/000-plan.md) | 2026-04-18 | Sentry + PostHog wiring; the App-Hang enable→tune→remove arc |
@@ -155,7 +154,7 @@ keep the old paths. Use this table to find a file that an old entry names:
 | 070 | [app-localization](070-app-localization/000-plan.md) | 2026-09-18 | Simplified Chinese UI from a String Catalog; translations sync at release time through the `sync-l10n` skill (nothing blocks everyday work); compiler-based coverage audit plus a baseline for unlocalized copy; living [glossary](070-app-localization/glossary.md); language choice stored only in the per-app `AppleLanguages` default |
 | 071 | [git-environment-recovery](071-git-environment-recovery/000-plan.md) | 2026-09-20 | Working Git selection, safe repository classification, recovery guidance, and plain-folder Shelf entry |
 | 072 | [workspace-editing](072-workspace-editing/000-plan.md) | 2026-09-25 | Edit a workspace after creation: metadata, member repositories (add, remove, reorder, roles) through one editor sheet reached from the sidebar, detail view, Settings, palette, and menu |
-| 073 | [codex-daemon-caller-identity](073-codex-daemon-caller-identity/000-plan.md) | 2026-09-29 | CLI callers under Codex's shared app-server daemon: cut the ancestry at the daemon and map `CODEX_THREAD_ID` to the driving pane through the TUI session log; `prowl list` reports the caller; the same mapping restores daemon-mode Codex log detection and [transcript resolution](073-codex-daemon-caller-identity/003-daemon-transcript-resolution.md) |
+| 073 | [codex-daemon-caller-identity](073-codex-daemon-caller-identity/000-plan.md) | 2026-09-29 | CLI callers under Codex's shared app-server daemon: cut the ancestry at the daemon and map `CODEX_THREAD_ID` to the driving pane through the TUI session log; `prowl list` reports the caller; daemon-mode log detection, [transcript resolution](073-codex-daemon-caller-identity/003-daemon-transcript-resolution.md), and [explicit workflow source fallback](073-codex-daemon-caller-identity/004-explicit-workflow-source.md) |
 | 074 | [project-restructure-and-tuist](074-project-restructure-and-tuist/000-plan.md) | 2026-10-03 | Tuist-generated macOS and iOS mirror projects (no `.xcodeproj` in Git), `supacode` → `Prowl` for targets, module, and types, and a root folder for each product (`App`, `CLI`, `Mirror`, `Shared`); no user-visible change |
 | 075 | [terminal-config-source](075-terminal-config-source/000-plan.md) | 2026-10-05 | Dedicated Ghostty config file for Prowl (#693) through one `GhosttyConfigSource`; CJK font fallback when the active config sets no fonts |
 | 076 | [devin-cli-support](076-devin-cli-support/000-plan.md) | 2026-10-06 | Process and native session detection, screen state, Profiles, and workflow integration |
