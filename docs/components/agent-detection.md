@@ -397,6 +397,85 @@ generic screen-motion inference. Viewer overlays (Claude's transcript / history-
 views) are an explicit exception: their chrome covers the live status area, so those
 frames keep the last trusted state instead of forcing Idle.
 
+## Remote agents over SSH
+
+When a pane's foreground command is a local `ssh`, Prowl shows the agent that runs on the
+host (docs-ai 082, L0). Prowl installs nothing on the host and edits no rc file.
+
+- **Consent.** Prowl does not connect to a host before you agree. The first `ssh` that
+  Prowl can read shows "Detect agents on <host>?" in the toolbar status, with its panel
+  open. The panel does not take keyboard focus, so you can finish a password or code
+  prompt first. **Turn On** starts detection in the open `ssh` panes at once, **Not Now**
+  asks again after Prowl restarts, and **Turn Off** stops asking. Until you choose, Prowl
+  opens no connection. Settings › Agents › Display › **Detect agents in SSH sessions**
+  holds the answer; the switch shows on until you turn it off. The environment variable
+  `PROWL_REMOTE_AGENT_DETECTION` overrides the setting and never asks: `0` turns the
+  feature off, any other value turns it on.
+- **Toolbar status.** While the focused pane's `ssh` uses Prowl's own connection, the
+  toolbar status shows the host and "Agent detection on", or "Agents not detected" with a
+  warning glyph. Hover (or click) for a panel that tells what the extra connection does,
+  why agents are not detected, and a button to the setting. The consent question ranks
+  above workflow runs there; this status ranks below workflow runs and rate limits, and
+  above the pull request.
+
+- **How.** Prowl opens its own SSH connection to the same target (`ssh -G` resolves user,
+  host name, port, `ProxyJump` and `-F`). It runs a read-only probe over that connection:
+  about once a second while a remote agent is listed, and every few seconds otherwise.
+  The probe finds the pane's session by `LC_PROWL_PANE`, which the default OpenSSH
+  `SendEnv`/`AcceptEnv` settings forward, and reads the session's foreground process. A
+  verified producer's OSC 7501 reports decide the state, as they do locally; otherwise the
+  screen decides.
+- **Pane and tab.** A pane whose foreground `ssh` reaches a host shows `user@host` in its
+  bottom-trailing corner, and its tab shows a network glyph before the title (the tooltip
+  names the hosts). Five seconds after the label appears or changes, only its glyph stays;
+  the pointer on the glyph shows the host again. When that `ssh` exits and the pane is back in its local shell, the
+  corner reads "Disconnected from user@host" for five seconds. A suspended `ssh` (still
+  running) only removes the label. When Prowl cannot read the pane's agents (the host has
+  no session for the pane, the side channel fails, or the `ssh` command is not supported),
+  the label shows a yellow warning glyph instead, whether or not an agent is listed. Its
+  tooltip gives the reason, and says that only agents that report their own status
+  (OSC 7501) are detected.
+- **Host label and health.** The Active Agents row shows `user@host` with a network
+  glyph. Connection health is shown apart from the agent's state. If no snapshot has
+  confirmed the agent for 10 s, the row keeps the last state, greys it out, and adds
+  "Last seen … ago". "Status unavailable" means the host was never read. A **Blocked**
+  state stays red: OSC has no heartbeat, so a blocked agent goes quiet while it waits
+  for you. A state of
+  "Unknown" means the host confirms the agent but no evidence decides its state. The tooltip names
+  the reason (for example, an unknown host key, or a server that does not accept
+  `LC_PROWL_PANE`).
+- **Degraded binding.** Sometimes the host cannot be read, or has no session for the pane:
+  `-F` without `SendEnv`, a refused key, or an `ssh` command outside the supported grammar.
+  In that case a verified producer's OSC 7501 report still lists the agent, with
+  `heuristic` confidence. Only the `ssh` exit releases such an agent. When its producer is
+  quiet for 10 s, it becomes stale.
+- **Inside tmux.** When the remote session's foreground is a tmux client, Prowl maps that
+  client to its active pane through the tmux server (never through inherited environment
+  variables). It identifies the agent from that pane's foreground job, and reads the
+  agent's state from the pane's visible screen (`tmux capture-pane`), not from the local
+  screen. The local screen also shows the tmux status line, other panes, and copy mode.
+  tmux drops OSC 7501, so screen rules decide the state there. Copy mode does not change
+  the state. Switching to another pane releases the agent, and switching back shows it
+  again within a few seconds. A second client attached to the same pane shows the same
+  agent in its own Prowl pane. A changing local screen asks for a fresh capture, with at
+  most one probe in flight. A screen larger than 64 KiB keeps its last lines. When many
+  panes are captured at once, the screens of Prowl panes come first, and a screen past
+  the probe's budget leaves that agent's state unknown for that probe.
+- **tmux limits.** Prowl looks for tmux servers only in `${TMUX_TMPDIR:-/tmp}/tmux-<uid>/`.
+  When it cannot reach the server of a client (for example a server started with
+  `tmux -S <path>`, or a removed socket), the pane badge shows a warning and
+  `remote.correlation` is `tmux_unreachable`. An agent that was already listed stays
+  listed, and its state becomes unknown after 10 s; it is not released. Prowl follows
+  one level of tmux only: a tmux inside a tmux pane, or a program in a `display-popup`,
+  is not read.
+- **Release.** A probed agent is released after two complete fresh snapshots without it
+  (about 2–3 s after it exits), or at once when the `ssh` exits.
+- **Limits.** A remote agent cannot be a `prowl agents dispatch` target that needs a
+  receipt, or a workflow `current`/`pick` participant: both fail with
+  `REMOTE_AGENT_UNSUPPORTED`. A stale or state-unknown observation never satisfies an
+  `idle` or `blocked` wait, or input readiness, until the host confirms the agent again. Local session files,
+  transcripts and hooks are never read for a remote agent.
+
 ## The state machine
 
 **Raw states:** `working`, `blocked`, `idle`, `unknown`.

@@ -36,6 +36,7 @@ final class WorktreeTerminalManager {
   private var notificationsEnabled = true
   private var commandFinishedNotificationEnabled = true
   private var commandFinishedNotificationThreshold = 10
+  private var remoteAgentDetectionConsent: RemoteAgentDetectionConsent = .undecided
   private var preferredFontSize: Float32?
   private var lastNotificationIndicatorCount: Int?
   private var eventContinuation: AsyncStream<TerminalClient.Event>.Continuation?
@@ -120,6 +121,9 @@ final class WorktreeTerminalManager {
       return
     }
     if handleSearchCommand(command) {
+      return
+    }
+    if handleSettingsCommand(command) {
       return
     }
     handleManagementCommand(command)
@@ -488,16 +492,30 @@ final class WorktreeTerminalManager {
     return true
   }
 
+  /// Settings the app pushes to every terminal state.
+  private func handleSettingsCommand(_ command: TerminalClient.Command) -> Bool {
+    switch command {
+    case .setNotificationsEnabled(let enabled):
+      setNotificationsEnabled(enabled)
+    case .setCommandFinishedNotification(let enabled, let threshold):
+      setCommandFinishedNotification(enabled: enabled, threshold: threshold)
+    case .setRemoteAgentDetection(let consent):
+      remoteAgentDetectionConsent = consent
+      for state in states.values {
+        state.setRemoteAgentDetectionConsent(consent)
+      }
+    default:
+      return false
+    }
+    return true
+  }
+
   private func handleManagementCommand(_ command: TerminalClient.Command) {
     switch command {
     case .prune(let ids):
       prune(keeping: ids)
     case .prunePreservingRepositories(let ids, let repositoryIDs):
       prune(keeping: ids, preservingRepositoryIDs: repositoryIDs)
-    case .setNotificationsEnabled(let enabled):
-      setNotificationsEnabled(enabled)
-    case .setCommandFinishedNotification(let enabled, let threshold):
-      setCommandFinishedNotification(enabled: enabled, threshold: threshold)
     case .setCanvasMode(let enabled):
       if enabled {
         terminalLogger.info(
@@ -942,6 +960,11 @@ final class WorktreeTerminalManager {
       enabled: commandFinishedNotificationEnabled,
       threshold: commandFinishedNotificationThreshold
     )
+    state.setRemoteAgentDetectionConsent(remoteAgentDetectionConsent)
+    state.onRemoteAgentConsentNeeded = { [weak self] surfaceID, destination in
+      self?.emit(
+        .remoteAgentConsentNeeded(worktreeID: worktree.id, surfaceID: surfaceID, destination: destination))
+    }
     state.undoCloseTimeout = closeUndoStack.timeout
     state.onCloseRecorded = { [weak self] record in
       guard let self else { return }

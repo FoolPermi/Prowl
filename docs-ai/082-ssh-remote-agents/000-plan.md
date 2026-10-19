@@ -216,6 +216,21 @@ ticks; macOS: `kern.boottime` and `lstart`), elapsed time, cwd, the tmux mapping
 11. **Admission.** A pane whose agent has a remote origin, including a manual `ssh` from a local
     repository, cannot be a workflow participant or a dispatch target that needs a receipt. The
     refusal is a clear error at the admission point, not only in the UI.
+12. **Consent and side-channel status.** The side channel reaches hosts the user named, and
+    the host can log it, so it starts only after the user agrees.
+    - Settings › Agents has the switch. Its stored value is `undecided` (the default), `on`
+      or `off`. The switch shows on unless the value is `off`.
+    - While the value is `undecided`, Prowl opens no connection and runs no `ssh -G`. The
+      first foreground `ssh` inside the grammar shows a consent panel: a toolbar status item
+      that opens its panel at once. The panel never takes keyboard focus, because the user
+      can be typing a password or a code. Its choices are Turn On, Not Now (ask again after a
+      relaunch) and Turn Off. A change of the switch in Settings also answers it.
+    - `PROWL_REMOTE_AGENT_DETECTION` overrides the stored value and never shows the panel.
+    - While the focused pane's `ssh` uses the side channel (a resolved connection, or a
+      failed attempt), the toolbar status shows the host and its health. Hover opens a panel
+      that tells what the extra connection does, the pane's correlation, and where to turn
+      it off.
+    - Toolbar status order: toast, consent, workflow, rate limit, side channel, pull request.
 
 ### L1 — Remote folders
 
@@ -419,6 +434,7 @@ case passes.
 | 2 | S2 | C1 host identity, C4 connection owner, C3 snapshot contract, C5 command model, C6 probe and its parser (unit tested with recorded output) | None (unused) |
 | 3 | S3 | L0 manual correlation: `LC_PROWL_PANE`, argv grammar, effective-config overrides, correlation states, generation and fence, release, stale projection, degraded OSC binding, admission refusal | Behind a feature flag |
 | 4 | S4 | L0 UX: host label, connection health, ssh-ended marker, CLI fields, docs; turns the S3 flag on | Manual remote agents appear |
+| 4c | S4c | L0 consent: stored `undecided`/`on`/`off`, consent panel at the first `ssh`, no connection before consent, Settings switch, side-channel toolbar status | No connection until the user agrees |
 | 5 | S5 | L0 tmux: user-owned tmux mapping and capture-based state | tmux panes detected |
 | 6 | L1a | `RepositoryLocation`, `localURL: URL?`, call-site triage | None |
 | 7 | L1b | `RepositoryHost` local implementation (fast paths kept); `GitClient` routed through it | None |
@@ -446,6 +462,8 @@ case passes.
 | L0-9 | Cost against a recorded baseline: local CPU grows by at most 2 % of one core per 10 remote panes (measured at 1/10/50), plus remote CPU, bytes/s and subprocess count recorded; one in-flight probe per connection; probe p95 < 0.5 s on a host with ≥ 500 processes |
 | L0-10 | No Prowl-installed files, configuration or probe artifacts on the host; no rc edits |
 | L0-11 | Host label, connection health and the ssh-ended marker are visible; `prowl agents --json` carries host, correlation state and freshness |
+| L0-12 | With the value `undecided`, a pane's `ssh` starts no Prowl `ssh` process; the consent panel shows once per launch and keeps the terminal's keyboard focus; Turn On starts detection in open `ssh` panes without a reconnect |
+| L0-13 | The focused pane's side channel shows in the toolbar status with host and health; its hover panel explains the extra connection |
 | L1-1 | Add, persist, restore a remote folder; a display-alias edit does not redirect it; a changed `HostName` pauses operations until the user rebinds or keeps the old target; hostile but valid path characters work; an unreachable host stays listed |
 | L1-2 | Old local settings and snapshots migrate unchanged; identical local and remote paths do not collide |
 | L1-3 | Worktree list/create/remove/rename on a bash 3.2 (macOS) host and a bash 5 (Linux) host |
@@ -522,3 +540,4 @@ case passes.
 - Updated 2026-10-17: revised in place after review round 1 — shared contracts C1–C6 (host identity, typed process reference, snapshot freshness, connection owner, structured commands, probe wire format), secondary port key, attachment-epoch fence, `clear` as withdrawal, capture-based tmux state, per-pane sessions with separate create/attach/end, structured remote Profile launch, local fast paths behind the host boundary, admission enforcement, UX items, PR order
 - Updated 2026-10-17: revised in place after review round 2 — ownership-based evidence retirement and `ConnectionKey` in S1, replacement-interval OSC fence, effective-config overrides and authority rebinding, qualified secondary key, stale projection and remote-unprobed origin, scheduling rule and numeric budgets, detach at close with reconnect Undo, removal disclosure, exposure gates
 - Updated 2026-10-18: added "L1 advanced — Interactive authentication" (host-level authentication modes, askpass helper, shared connection, opt-in Keychain password, L0 sign-in action), slices L1g–L1h and criteria L1-9 to L1-15
+- Updated 2026-10-18: L0 item 12 (consent before the first side-channel connection, Settings switch, side-channel toolbar status), slice S4c, criteria L0-12 and L0-13

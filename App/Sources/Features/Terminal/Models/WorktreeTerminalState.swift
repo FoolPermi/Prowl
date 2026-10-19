@@ -243,6 +243,30 @@ final class WorktreeTerminalState {
   @ObservationIgnored var pendingCommandFinishedBySurface: [UUID: PendingCommandFinished] = [:]
   /// Unmapped `app` values already reported once per surface.
   @ObservationIgnored var programStatusUnmappedAppsLoggedBySurface: [UUID: Set<String>] = [:]
+  /// One tracker per pane whose foreground is an `ssh` (docs-ai 082, L0).
+  @ObservationIgnored var remotePaneTrackers: [UUID: RemotePaneTracker] = [:]
+  /// The remote OSC fence per surface and `ssh` generation (a pane can hold several
+  /// suspended `ssh` clients), kept as long as the surface's record store so an undone close
+  /// restores it with the records it fences.
+  @ObservationIgnored var remoteFenceHistoryBySurface: [UUID: [LocalProcessGeneration: RemoteFenceHistory]] = [:]
+  @ObservationIgnored var remoteSnapshotSourceForTesting: RemoteSnapshotSource?
+  @ObservationIgnored var remoteUptimeForTesting: (() -> TimeInterval)?
+  /// Overrides the mode in tests: true is `.enabled`, false `.disabled`.
+  @ObservationIgnored var remoteAgentDetectionEnabledForTesting: Bool?
+  @ObservationIgnored var remoteDetectionEnvironmentForTesting: [String: String]?
+  /// The stored answer about the side channel; the manager pushes it from the settings.
+  @ObservationIgnored var remoteAgentDetectionConsent: RemoteAgentDetectionConsent = .undecided
+  /// The `ssh` generation each pane asked about, so one `ssh` asks once.
+  @ObservationIgnored var remoteConsentAskedSSHBySurface: [UUID: LocalProcessGeneration] = [:]
+  /// A pane's `ssh` needs the user's answer before Prowl connects: (surface, destination).
+  @ObservationIgnored var onRemoteAgentConsentNeeded: ((UUID, String) -> Void)?
+  @ObservationIgnored var accessibilityPosterForTesting: (@MainActor (Any, NSAccessibility.Notification) -> Void)?
+  var remoteAgentDetectionMode: RemoteAgentDetection.Mode {
+    if let enabled = remoteAgentDetectionEnabledForTesting { return enabled ? .enabled : .disabled }
+    return RemoteAgentDetection.mode(
+      environment: remoteDetectionEnvironmentForTesting ?? ProcessInfo.processInfo.environment,
+      consent: remoteAgentDetectionConsent)
+  }
   /// Test seams: the process probe, the OSC support table, and the diagnostics sink.
   @ObservationIgnored var agentProcessProbeForTesting: AgentProcessProbeOverride?
   @ObservationIgnored var programStatusSupportForTesting: ((DetectedAgent) -> ProgramStatusSupport)?
@@ -261,6 +285,9 @@ final class WorktreeTerminalState {
   /// drives the UI.
   @ObservationIgnored
   var lastAgentScreenScanBySurface: [UUID: AgentScreenScan] = [:]
+  /// The local screen of a pane inside a remote tmux, as a hash: a change asks for a fresh
+  /// capture (docs-ai 082, S5).
+  @ObservationIgnored var tmuxLocalScreenHashBySurface: [UUID: Int] = [:]
   /// Last `ActiveAgentEntry` emitted per surface. `detectAgentState` re-emits
   /// whenever any `PaneAgentState` field changes, including internal
   /// bookkeeping (raw-state oscillation, session miss streaks, presence

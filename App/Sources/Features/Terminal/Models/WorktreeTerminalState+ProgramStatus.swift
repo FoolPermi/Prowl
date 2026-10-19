@@ -114,6 +114,8 @@ extension WorktreeTerminalState {
       programStatusStoresBySurface.removeValue(forKey: surfaceID)
       programStatusUnmappedAppsLoggedBySurface.removeValue(forKey: surfaceID)
       programStatusOriginBySurface.removeValue(forKey: surfaceID)
+      remoteFenceHistoryBySurface.removeValue(forKey: surfaceID)
+      remoteConsentAskedSSHBySurface.removeValue(forKey: surfaceID)
     }
   }
 
