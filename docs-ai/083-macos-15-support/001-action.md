@@ -60,8 +60,9 @@ with Swift 6.1 and keeps the macOS 26 features:
   reports after the dependency-resolution fix.
 - Tests, main partition in a copy of the checkout outside `~/Documents` (the app test host
   cannot read repository fixtures from `~/Documents` without a TCC grant), Xcode 26.3,
-  parallel: **4106 passed, 0 failed of 4112** (six mirror/event-monitor/shell-cancellation
-  tests belong to the Makefile's separate runs).
+  parallel: **4106 passed, 0 failed of 4112**. The six mirror/event-monitor/shell-cancellation
+  tests that the Makefile runs separately also pass on Xcode 26.3, so the whole app suite is
+  green.
 - `ShelfSpineMotionTests` was the last failure: on macOS 15 SwiftUI animates the spine's layer
   geometry without moving the hosted NSView's frame each frame, so sampling the frame saw only
   the endpoints. The test now samples the animated width value and keeps the final-frame and
