@@ -113,13 +113,13 @@ final class WindowFocusObserverNSView: NSView {
   }
 
   #if compiler(>=6.2)
-  isolated deinit {
-    clearObservers()
-  }
+    isolated deinit {
+      clearObservers()
+    }
   #else
-  // Swift 6.1 has no isolated `deinit`; AppKit releases the view on the main thread.
-  deinit {
-    MainActor.assumeIsolated { clearObservers() }
-  }
+    // Swift 6.1 has no isolated `deinit`; AppKit releases the view on the main thread.
+    deinit {
+      MainActor.assumeIsolated { clearObservers() }
+    }
   #endif
 }

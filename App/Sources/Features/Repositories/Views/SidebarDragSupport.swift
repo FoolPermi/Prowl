@@ -346,32 +346,32 @@ extension View {
     _ onSession: @escaping @MainActor (_ draggedIDs: Set<Worktree.ID>, _ didEnd: Bool) -> Void
   ) -> some View {
     #if PROWL_LIQUID_GLASS
-    self.onDragSessionUpdated { session in
-      // Data transfer can finish before the drag becomes active on macOS.
-      let didEnd: Bool =
-        if case .ended = session.phase {
-          true
-        } else {
-          false
-        }
-      onSession(Set(session.draggedItemIDs(for: Worktree.ID.self)), didEnd)
-    }
+      self.onDragSessionUpdated { session in
+        // Data transfer can finish before the drag becomes active on macOS.
+        let didEnd: Bool =
+          if case .ended = session.phase {
+            true
+          } else {
+            false
+          }
+        onSession(Set(session.draggedItemIDs(for: Worktree.ID.self)), didEnd)
+      }
     #else
-    self
+      self
     #endif
   }
 
   @ViewBuilder
   func sidebarDragSessionEnded(_ onEnd: @escaping @MainActor () -> Void) -> some View {
     #if PROWL_LIQUID_GLASS
-    self.onDragSessionUpdated { session in
-      // Data transfer can finish before the drag becomes active on macOS.
-      if case .ended = session.phase {
-        onEnd()
+      self.onDragSessionUpdated { session in
+        // Data transfer can finish before the drag becomes active on macOS.
+        if case .ended = session.phase {
+          onEnd()
+        }
       }
-    }
     #else
-    self
+      self
     #endif
   }
 }
@@ -385,19 +385,19 @@ private enum SidebarDragEndMonitor {
 
   static func armWhenUnsupported(_ onEnd: @escaping @MainActor () -> Void) {
     #if !PROWL_LIQUID_GLASS
-    if let monitor {
-      NSEvent.removeMonitor(monitor)
-    }
-    monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
-      DispatchQueue.main.async {
-        if let monitor = SidebarDragEndMonitor.monitor {
-          NSEvent.removeMonitor(monitor)
-          SidebarDragEndMonitor.monitor = nil
-        }
-        onEnd()
+      if let monitor {
+        NSEvent.removeMonitor(monitor)
       }
-      return event
-    }
+      monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+        DispatchQueue.main.async {
+          if let monitor = SidebarDragEndMonitor.monitor {
+            NSEvent.removeMonitor(monitor)
+            SidebarDragEndMonitor.monitor = nil
+          }
+          onEnd()
+        }
+        return event
+      }
     #endif
   }
 }

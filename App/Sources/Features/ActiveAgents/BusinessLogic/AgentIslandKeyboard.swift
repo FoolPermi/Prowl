@@ -237,20 +237,20 @@ final class AgentIslandGlobalHotKeys {
   }
 
   #if compiler(>=6.2)
-  isolated deinit {
-    stop()
-  }
+    isolated deinit {
+      stop()
+    }
   #else
-  // Swift 6.1 has no isolated `deinit`; unregistering the Carbon hot keys is non-isolated.
-  deinit {
-    for hotKey in hotKeys.values {
-      UnregisterEventHotKey(hotKey)
+    // Swift 6.1 has no isolated `deinit`; unregistering the Carbon hot keys is non-isolated.
+    deinit {
+      for hotKey in hotKeys.values {
+        UnregisterEventHotKey(hotKey)
+      }
+      hotKeys.removeAll()
+      if let eventHandler {
+        RemoveEventHandler(eventHandler)
+      }
     }
-    hotKeys.removeAll()
-    if let eventHandler {
-      RemoveEventHandler(eventHandler)
-    }
-  }
   #endif
 
   func register(binding: Keybinding?) -> IslandHotKeyRegistrationResult {

@@ -58,8 +58,12 @@ with Swift 6.1 and keeps the macOS 26 features:
   assertion ("Test already started") in this toolchain; the partitioned or serial runs pass,
   so `make test` now passes `-parallel-testing-enabled NO` (`APP_TEST_PARALLEL_ARGS`) to the
   four app test runs.
-- `swiftlint lint` is clean. `check-workflow-naming` and `check-legacy-naming` pass.
-  `check-localization` cannot run on this machine (its scripts need Python 3.10+).
+- `make format-changed` was silently a no-op on macOS's bash 3.2 (`mapfile`); it now builds
+  the file list with `printf`/`xargs -0`.
+- `make check` passes end to end (format-changed, format-lint, swiftlint, script tests,
+  workflow/legacy naming, string-catalog check) once the machine has Python 3.13 and
+  swift-format 604 from Homebrew; the Makefile's `format-changed` no longer needs bash 4's
+  `mapfile`, which macOS's `/bin/bash` lacks.
 
 ## Deviations from plan
 

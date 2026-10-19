@@ -20,7 +20,7 @@ enum LiquidGlass {
   /// `true` when the running system draws Liquid Glass.
   static var isAvailable: Bool {
     #if PROWL_LIQUID_GLASS
-    if #available(macOS 26.0, *) { return true }
+      if #available(macOS 26.0, *) { return true }
     #endif
     return false
   }
@@ -34,17 +34,17 @@ extension View {
   @ViewBuilder
   func prowlGlass<S: Shape>(_ shape: S, interactive: Bool = false) -> some View {
     #if PROWL_LIQUID_GLASS
-    if #available(macOS 26.0, *) {
-      if interactive {
-        glassEffect(.regular.interactive(), in: shape)
+      if #available(macOS 26.0, *) {
+        if interactive {
+          glassEffect(.regular.interactive(), in: shape)
+        } else {
+          glassEffect(.regular, in: shape)
+        }
       } else {
-        glassEffect(.regular, in: shape)
+        background(.regularMaterial, in: shape)
       }
-    } else {
-      background(.regularMaterial, in: shape)
-    }
     #else
-    background(.regularMaterial, in: shape)
+      background(.regularMaterial, in: shape)
     #endif
   }
 }
@@ -56,13 +56,13 @@ extension View {
 struct ToolbarGroupSpacer: ToolbarContent {
   var body: some ToolbarContent {
     #if PROWL_LIQUID_GLASS
-    if #available(macOS 26.0, *) {
-      ToolbarSpacer(.fixed)
-    } else {
-      ToolbarItem { EmptyView() }
-    }
+      if #available(macOS 26.0, *) {
+        ToolbarSpacer(.fixed)
+      } else {
+        ToolbarItem { EmptyView() }
+      }
     #else
-    ToolbarItem { EmptyView() }
+      ToolbarItem { EmptyView() }
     #endif
   }
 }
@@ -75,13 +75,13 @@ extension ToolbarContent {
   @ToolbarContentBuilder
   func prowlHidingSharedBackground() -> some ToolbarContent {
     #if PROWL_LIQUID_GLASS
-    if #available(macOS 26.0, *) {
-      sharedBackgroundVisibility(.hidden)
-    } else {
-      self
-    }
+      if #available(macOS 26.0, *) {
+        sharedBackgroundVisibility(.hidden)
+      } else {
+        self
+      }
     #else
-    self
+      self
     #endif
   }
 }
@@ -93,13 +93,13 @@ extension View {
   @ViewBuilder
   func prowlRemovingToolbarTitle() -> some View {
     #if PROWL_LIQUID_GLASS
-    if #available(macOS 26.0, *) {
-      toolbar(removing: .title)
-    } else {
-      background(ToolbarTitleHider())
-    }
+      if #available(macOS 26.0, *) {
+        toolbar(removing: .title)
+      } else {
+        background(ToolbarTitleHider())
+      }
     #else
-    background(ToolbarTitleHider())
+      background(ToolbarTitleHider())
     #endif
   }
 }

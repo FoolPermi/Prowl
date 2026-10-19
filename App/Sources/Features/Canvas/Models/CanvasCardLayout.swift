@@ -99,9 +99,9 @@ final class CanvasLayoutStore {
   // No actor-bound cleanup is needed. Avoid inferred isolated deinit, which can
   // hit the TaskLocal invalid-free bug in older system Swift runtimes (swiftlang/swift#85204).
   #if compiler(>=6.2)
-  nonisolated deinit {}
+    nonisolated deinit {}
   #else
-  deinit {}
+    deinit {}
   #endif
 
   /// Resolve the layout for entering Canvas with `cardKeys` on screen. A canvas

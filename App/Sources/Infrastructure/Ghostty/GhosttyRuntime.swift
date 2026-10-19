@@ -194,25 +194,25 @@ final class GhosttyRuntime {
   }
 
   #if compiler(>=6.2)
-  isolated deinit {
-    releaseRuntime()
-  }
+    isolated deinit {
+      releaseRuntime()
+    }
   #else
-  // Swift 6.1 has no isolated `deinit`. A deinit already has exclusive access to its own stored
-  // properties, and every call below is non-isolated, so the cleanup needs no actor hop (the
-  // runtime may be released off the main actor, and an `assumeIsolated` hop would trap).
-  deinit {
-    let center = NotificationCenter.default
-    for observer in observers {
-      center.removeObserver(observer)
+    // Swift 6.1 has no isolated `deinit`. A deinit already has exclusive access to its own stored
+    // properties, and every call below is non-isolated, so the cleanup needs no actor hop (the
+    // runtime may be released off the main actor, and an `assumeIsolated` hop would trap).
+    deinit {
+      let center = NotificationCenter.default
+      for observer in observers {
+        center.removeObserver(observer)
+      }
+      if let app {
+        ghostty_app_free(app)
+      }
+      if let config {
+        ghostty_config_free(config)
+      }
     }
-    if let app {
-      ghostty_app_free(app)
-    }
-    if let config {
-      ghostty_config_free(config)
-    }
-  }
   #endif
 
   private func releaseRuntime() {

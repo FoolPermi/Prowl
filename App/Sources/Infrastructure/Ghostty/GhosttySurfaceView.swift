@@ -376,14 +376,14 @@ final class GhosttySurfaceView: NSView, Identifiable {
   }
 
   #if compiler(>=6.2)
-  isolated deinit {
-    releaseSurfaceResources()
-  }
+    isolated deinit {
+      releaseSurfaceResources()
+    }
   #else
-  // Swift 6.1 has no isolated `deinit`; AppKit releases surfaces on the main thread.
-  deinit {
-    MainActor.assumeIsolated { releaseSurfaceResources() }
-  }
+    // Swift 6.1 has no isolated `deinit`; AppKit releases surfaces on the main thread.
+    deinit {
+      MainActor.assumeIsolated { releaseSurfaceResources() }
+    }
   #endif
 
   private func releaseSurfaceResources() {

@@ -1,7 +1,7 @@
 import Foundation
 
 #if canImport(FoundationModels)
-import FoundationModels
+  import FoundationModels
 #endif
 
 /// Apple's on-device Foundation Model, which only macOS 26 provides.
@@ -14,35 +14,35 @@ struct FoundationModelLLMService: LLMService {
 
   var isAvailable: Bool {
     #if canImport(FoundationModels)
-    guard #available(macOS 26.0, *) else { return false }
-    return SystemLanguageModel.default.isAvailable
+      guard #available(macOS 26.0, *) else { return false }
+      return SystemLanguageModel.default.isAvailable
     #else
-    return false
+      return false
     #endif
   }
 
   func generate(prompt: String) async throws -> String {
     #if canImport(FoundationModels)
-    guard #available(macOS 26.0, *) else { throw LLMServiceError.unavailable }
-    let session = LanguageModelSession()
-    let response = try await withThrowingTaskGroup(of: String.self) { group in
-      group.addTask {
-        let result = try await session.respond(to: prompt)
-        return result.content
+      guard #available(macOS 26.0, *) else { throw LLMServiceError.unavailable }
+      let session = LanguageModelSession()
+      let response = try await withThrowingTaskGroup(of: String.self) { group in
+        group.addTask {
+          let result = try await session.respond(to: prompt)
+          return result.content
+        }
+        group.addTask {
+          try await Task.sleep(for: Self.timeout)
+          throw CancellationError()
+        }
+        guard let first = try await group.next() else {
+          throw CancellationError()
+        }
+        group.cancelAll()
+        return first
       }
-      group.addTask {
-        try await Task.sleep(for: Self.timeout)
-        throw CancellationError()
-      }
-      guard let first = try await group.next() else {
-        throw CancellationError()
-      }
-      group.cancelAll()
-      return first
-    }
-    return response
+      return response
     #else
-    throw LLMServiceError.unavailable
+      throw LLMServiceError.unavailable
     #endif
   }
 }

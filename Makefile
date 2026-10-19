@@ -658,17 +658,17 @@ format: # Format all Swift code with swift-format (full-tree cleanup)
 
 format-changed: # Format Swift files changed from FORMAT_BASE_REF (default: origin/main)
 	@base="$$(git merge-base HEAD "$(FORMAT_BASE_REF)" 2>/dev/null || git rev-parse HEAD)"; \
-	mapfile -t files < <( \
+	files="$$( \
 		{ \
 			git diff --name-only --diff-filter=ACMR "$$base" -- $(SWIFT_FORMAT_PATHS); \
 			git ls-files --others --exclude-standard -- $(SWIFT_FORMAT_PATHS); \
 		} | awk '/\.swift$$/' | sort -u \
-	); \
-	if [ "$${#files[@]}" -eq 0 ]; then \
+	)"; \
+	if [ -z "$$files" ]; then \
 		echo "No changed Swift files to format."; \
 	else \
-		printf 'Formatting %s changed Swift file(s) from %s\n' "$${#files[@]}" "$$base"; \
-		swift-format -p --in-place --configuration ./.swift-format.json "$${files[@]}"; \
+		printf 'Formatting changed Swift files from %s\n' "$$base"; \
+		printf '%s\0' "$$files" | xargs -0 swift-format -p --in-place --configuration ./.swift-format.json; \
 	fi
 
 format-lint: # Check Swift formatting without rewriting files
