@@ -419,7 +419,8 @@ struct RemoteAgentDetectionTests {
     #expect(surface.accessibilityHelp() == "Pane 1 of 2")
     surface.bridge.state.remoteIndicator = .connected(host: "dev@box", ssh: sshGeneration, issue: .unmapped)
     #expect(surface.accessibilityLabel() == "Claude Code, connected to dev@box")
-    #expect(surface.accessibilityHelp()?.hasPrefix("Pane 1 of 2 dev@box has no session for this pane.") == true)
+    // A line break keeps the two sentences apart when VoiceOver reads the help.
+    #expect(surface.accessibilityHelp()?.hasPrefix("Pane 1 of 2\ndev@box has no session for this pane.") == true)
     surface.bridge.state.remoteIndicator = .ended(host: "dev@box", endedAt: Date())
     #expect(surface.accessibilityLabel() == "Claude Code, disconnected from dev@box")
     // An old exit is not announced.

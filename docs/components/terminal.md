@@ -103,9 +103,11 @@ later recognised command in the same tab still takes it over.
 
 A tab with a pane whose foreground `ssh` reaches a remote host also shows a network glyph
 before its title, and the tooltip names the host. The pane itself shows `user@host` in its
-bottom-trailing corner, and "Disconnected from user@host" for five seconds after that `ssh`
-exits. A yellow warning glyph in that label means Prowl cannot read the pane's agents; its
-tooltip says why. See [agent detection](agent-detection.md#remote-agents-over-ssh).
+bottom-trailing corner for five seconds when the label appears or changes. Then only the
+network glyph stays, so the label does not cover the terminal's bottom line (for example a
+tmux status line); put the pointer on the glyph to see the host again. After that `ssh`
+exits, the corner reads "Disconnected from user@host" for five seconds. A yellow warning
+glyph in that label means Prowl cannot read the pane's agents; its tooltip says why. See [agent detection](agent-detection.md#remote-agents-over-ssh).
 
 ## Shell integration & status (OSC sequences)
 

@@ -413,7 +413,8 @@ false` and relaunch Prowl, or launch it with `PROWL_REMOTE_AGENT_DETECTION=0`.
   screen decides.
 - **Pane and tab.** A pane whose foreground `ssh` reaches a host shows `user@host` in its
   bottom-trailing corner, and its tab shows a network glyph before the title (the tooltip
-  names the hosts). When that `ssh` exits and the pane is back in its local shell, the
+  names the hosts). Five seconds after the label appears or changes, only its glyph stays;
+  the pointer on the glyph shows the host again. When that `ssh` exits and the pane is back in its local shell, the
   corner reads "Disconnected from user@host" for five seconds. A suspended `ssh` (still
   running) only removes the label. When Prowl cannot read the pane's agents (the host has
   no session for the pane, the side channel fails, or the `ssh` command is not supported),

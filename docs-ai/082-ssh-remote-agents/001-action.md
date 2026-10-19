@@ -493,6 +493,16 @@ identity from the mapping and state from the screen.
 
   A bound agent stays listed and its state becomes unknown when its capture is older than
   `RemoteAgentContext.staleAfter`.
+- **Compact badge** (live check, 2026-10-19). In tmux, the full badge covered the right
+  part of the status line all the time. `RemotePaneBadge` now names the host for
+  `RemotePaneIndicator.hostLabelDuration` (5 s) after the indicator appears or changes (a
+  new issue included), then shows only its glyph. The pointer on the glyph shows the host
+  again, so the glyph takes hits; the ended marker still does not. A view mount (such as a
+  tab switch) names the host again. A cancelled timer no longer marks the next indicator as
+  expired.
+- **Accessibility help** (live check). The pane's help joined "Pane n of m" and the issue
+  reason with a space, so VoiceOver read them as one sentence. It joins them with a line
+  break now.
 - **Test seam.** `GhosttySurfaceBridge.activeTextForTesting`.
 - **Measured** (macOS 26.5, tmux 3.7c, Claude 2.1.302):
   - Claude in `tmux -L s5e2e` appeared after 0.35 s (`claude.idleComposer` from the
