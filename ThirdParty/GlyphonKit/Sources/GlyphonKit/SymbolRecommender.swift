@@ -5,6 +5,7 @@ import FoundationModels
 import NaturalLanguage
 
 #if canImport(FoundationModels)
+@available(macOS 26.0, iOS 26.0, *)
 @Generable
 struct KeywordExtraction {
   @Guide(description: "English words naming the main subject: the concrete thing an icon should depict", .count(2))
@@ -60,6 +61,7 @@ public struct SymbolRecommender: Sendable {
 
   /// The model pipeline, reached only when the system model is available.
   #if canImport(FoundationModels)
+  @available(macOS 26.0, iOS 26.0, *)
   private func aiRecommendation(for trimmed: String, candidateLimit: Int) async throws -> SymbolRecommendation {
     let extraction: KeywordExtraction
     do {
@@ -211,6 +213,7 @@ public struct SymbolRecommender: Sendable {
   // MARK: - Stage 1: keywords
 
   #if canImport(FoundationModels)
+  @available(macOS 26.0, iOS 26.0, *)
   private func extractKeywords(from text: String) async throws -> KeywordExtraction {
     let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
     let session = LanguageModelSession(model: model, instructions: """
@@ -236,6 +239,7 @@ public struct SymbolRecommender: Sendable {
     var reason: String
   }
 
+  @available(macOS 26.0, iOS 26.0, *)
   private func pickSymbol(query: String, candidates: [SymbolRootIndex.Root]) async throws -> IconPick {
     let candidateNames = candidates.map(\.name)
     let nameSchema = DynamicGenerationSchema(name: "SymbolName", anyOf: candidateNames)
@@ -291,6 +295,7 @@ public struct SymbolRecommender: Sendable {
   }
 
   /// Unconstrained fallback for guardrail refusals on the schema path.
+  @available(macOS 26.0, iOS 26.0, *)
   private func pickSymbolPlainText(query: String, candidates: [SymbolRootIndex.Root]) async throws -> IconPick {
     let list = candidates.map { "- \($0.name)" }.joined(separator: "\n")
     let prompt = """

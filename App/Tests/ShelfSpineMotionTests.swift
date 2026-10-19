@@ -12,7 +12,11 @@ struct ShelfSpineMotionTests {
 
     for moved in [true, false] {
       fixture.move(moved)
-      #expect(fixture.positions.contains { $0 > 1 && $0 < 159 })
+      // The book's animated value is the interpolating one; on macOS 15 the spine's layer
+      // geometry animates without the hosted NSView's frame moving per frame, so the final
+      // frame is checked separately.
+      #expect(fixture.bookSamples.contains { $0 > 0 && $0 < 1 })
+      #expect(abs((fixture.bookSamples.last ?? -1) - (moved ? 1 : 0)) < 0.01)
       #expect(abs((fixture.positions.last ?? -1) - (moved ? 160 : 0)) < 0.5)
       #expect(!fixture.chromeSamples.isEmpty)
       #expect(fixture.chromeSamples.allSatisfy { $0 == 0 || $0 == 1 })
@@ -78,10 +82,13 @@ private final class SpineMotionFixture {
     let chrome: Recorder
     let hover: Recorder
     let frame: Recorder
+    let book: Recorder
 
     var body: some View {
       HStack(spacing: 0) {
-        Color.clear.frame(width: model.moved ? 160 : 0)
+        Color.clear
+          .frame(width: model.moved ? 160 : 0)
+          .modifier(ProgressProbe(progress: model.moved ? 1 : 0, recorder: book))
         Color.primary
           .modifier(ProgressProbe(progress: model.moved ? 1 : 0, recorder: chrome))
           .overlay {
@@ -103,10 +110,13 @@ private final class SpineMotionFixture {
   private let chrome = Recorder()
   private let hoverRecorder = Recorder()
   private let frame = Recorder()
+  /// Samples the book's animated width, which is what SwiftUI interpolates.
+  private let book = Recorder()
   private let window: NSWindow
   private let host: NSHostingView<Host>
   private(set) var positions: [CGFloat] = []
   var chromeSamples: [CGFloat] { chrome.samples }
+  var bookSamples: [CGFloat] { book.samples }
   var hoverSamples: [CGFloat] { hoverRecorder.samples }
   var mounts: Int { frame.mounts }
 
@@ -116,7 +126,8 @@ private final class SpineMotionFixture {
       styleMask: [.borderless], backing: .buffered, defer: false
     )
     host = NSHostingView(
-      rootView: Host(model: model, chrome: chrome, hover: hoverRecorder, frame: frame))
+      rootView: Host(
+        model: model, chrome: chrome, hover: hoverRecorder, frame: frame, book: book))
     window.contentView = host
     window.orderBack(nil)
     render { frame.view != nil }
@@ -129,6 +140,7 @@ private final class SpineMotionFixture {
   func move(_ moved: Bool) {
     positions = []
     chrome.samples = []
+    book.samples = []
     model.moved = moved
     let target: CGFloat = moved ? 160 : 0
     render { positions.last.map { abs($0 - target) < 0.5 } ?? false }

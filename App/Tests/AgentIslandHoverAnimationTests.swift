@@ -87,7 +87,7 @@ private final class HoverAnimationFixture {
 
   /// Written from the probe's non-isolated `animatableData` setter, which SwiftUI only calls on
   /// the main actor.
-  final class Recorder: @unchecked Sendable {
+  nonisolated final class Recorder: @unchecked Sendable {
     var samples: [Double] = []
   }
 

@@ -37,7 +37,9 @@ final class SecureInput: Observable {
   #if compiler(>=6.2)
     isolated deinit {
       NotificationCenter.default.removeObserver(self)
-      releaseState()
+      scoped.removeAll()
+      global = false
+      apply()
     }
   #else
     // Swift 6.1 has no isolated `deinit`; the singleton only deallocates at process exit, so

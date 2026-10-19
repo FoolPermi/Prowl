@@ -19,15 +19,15 @@ public enum AIAvailability: Sendable, Equatable {
     guard #available(macOS 26.0, iOS 26.0, *) else { return .deviceNotSupported }
     switch SystemLanguageModel.default.availability {
     case .available:
-      .available
+      return .available
     case .unavailable(.appleIntelligenceNotEnabled):
-      .appleIntelligenceNotEnabled
+      return .appleIntelligenceNotEnabled
     case .unavailable(.modelNotReady):
-      .modelNotReady
+      return .modelNotReady
     case .unavailable(.deviceNotEligible):
-      .deviceNotSupported
+      return .deviceNotSupported
     case .unavailable:
-      .deviceNotSupported
+      return .deviceNotSupported
     }
     #else
     .deviceNotSupported

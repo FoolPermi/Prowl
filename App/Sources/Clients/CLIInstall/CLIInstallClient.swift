@@ -71,7 +71,7 @@ let cliDefaultInstallPath = URL(fileURLWithPath: "/usr/local/bin/prowl")
 private enum BundledCLILocator {
   private final class Token {}
 
-  static var url: URL? {
+  nonisolated static var url: URL? {
     // Build the resources path from the app's own bundle URL: `Bundle.resourceURL` is relative
     // in the Swift Testing host, where only `bundleURL` resolves to the app on disk.
     Bundle(for: Token.self).bundleURL

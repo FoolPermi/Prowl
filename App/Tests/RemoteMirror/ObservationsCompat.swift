@@ -3,8 +3,7 @@ import Testing
 /// Polls a main-actor value so `for await value in ... where condition` works on toolchains that
 /// predate Swift 6.2's `Observations`. Every mirror test waits on state that the host or client
 /// mutates on the main actor, so a short poll is enough and keeps the call sites uniform.
-@MainActor
-struct ObservationsCompat<Value: Sendable>: AsyncSequence {
+nonisolated struct ObservationsCompat<Value: Sendable>: AsyncSequence {
   private let read: @MainActor @Sendable () -> Value
   private let timeout: Duration
 

@@ -34,7 +34,9 @@ final class TerminalCloseUndoKeyMonitor {
 
   #if compiler(>=6.2)
     isolated deinit {
-      removeMonitorIfNeeded()
+      if let monitor {
+        NSEvent.removeMonitor(monitor)
+      }
     }
   #else
     // Swift 6.1 has no isolated `deinit`; a deinit may read its own stored properties, and

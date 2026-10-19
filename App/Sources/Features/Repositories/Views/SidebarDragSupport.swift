@@ -346,15 +346,19 @@ extension View {
     _ onSession: @escaping @MainActor (_ draggedIDs: Set<Worktree.ID>, _ didEnd: Bool) -> Void
   ) -> some View {
     #if PROWL_LIQUID_GLASS
-      self.onDragSessionUpdated { session in
-        // Data transfer can finish before the drag becomes active on macOS.
-        let didEnd: Bool =
-          if case .ended = session.phase {
-            true
-          } else {
-            false
-          }
-        onSession(Set(session.draggedItemIDs(for: Worktree.ID.self)), didEnd)
+      if #available(macOS 26.0, *) {
+        self.onDragSessionUpdated { session in
+          // Data transfer can finish before the drag becomes active on macOS.
+          let didEnd: Bool =
+            if case .ended = session.phase {
+              true
+            } else {
+              false
+            }
+          onSession(Set(session.draggedItemIDs(for: Worktree.ID.self)), didEnd)
+        }
+      } else {
+        self
       }
     #else
       self
@@ -364,11 +368,15 @@ extension View {
   @ViewBuilder
   func sidebarDragSessionEnded(_ onEnd: @escaping @MainActor () -> Void) -> some View {
     #if PROWL_LIQUID_GLASS
-      self.onDragSessionUpdated { session in
-        // Data transfer can finish before the drag becomes active on macOS.
-        if case .ended = session.phase {
-          onEnd()
+      if #available(macOS 26.0, *) {
+        self.onDragSessionUpdated { session in
+          // Data transfer can finish before the drag becomes active on macOS.
+          if case .ended = session.phase {
+            onEnd()
+          }
         }
+      } else {
+        self
       }
     #else
       self

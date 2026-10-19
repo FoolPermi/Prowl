@@ -462,10 +462,10 @@ test-scripts: # Run tests for the repository's scripts
 # Real I/O deadlines run separately from the bulk suite's main-actor work. A TCA TestStore
 # enqueues all tasks of the process on the main thread while it lives, so in the bulk run a
 # task that blocks on a child process also blocks every test.
-# Swift Testing's XCTest bridge asserts ("Test already started") when the whole target runs in
-# parallel on the Swift 6.1 toolchains used to build this fork; serial runs pass. Set
-# APP_TEST_PARALLEL_ARGS empty to run in parallel (upstream CI's Xcode does).
-APP_TEST_PARALLEL_ARGS ?= -parallel-testing-enabled NO
+# Swift Testing's XCTest bridge asserted ("Test already started") on the Swift 6.1 toolchain;
+# Xcode 26 runs the app tests in parallel again. Set APP_TEST_PARALLEL_ARGS to
+# `-parallel-testing-enabled NO` to diagnose a flaky parallel run.
+APP_TEST_PARALLEL_ARGS ?=
 
 test-app: ensure-ghostty ensure-project # Run app/unit tests via xcodebuild
 	@set -euo pipefail; \
