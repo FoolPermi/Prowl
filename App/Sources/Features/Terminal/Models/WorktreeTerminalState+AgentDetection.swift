@@ -106,6 +106,7 @@ extension WorktreeTerminalState {
     agentDetectionPresenceBySurface.removeValue(forKey: surfaceID)
     lastAgentDetectionDiagnosticsBySurface.removeValue(forKey: surfaceID)
     lastAgentScreenScanBySurface.removeValue(forKey: surfaceID)
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
     if surfaceAgentStates[surfaceID]?.detectedAgent == nil {
       surfaceAgentStates.removeValue(forKey: surfaceID)
     }
@@ -238,8 +239,7 @@ extension WorktreeTerminalState {
     )
     next.sessionMissStreak = sessionMissStreak
     next.decision = decision
-    next.remote =
-      next.agentProcess?.origin == .local ? nil : remote?.context(now: now, stateKnown: stabilized != .unknown)
+    next.remote = remoteContext(remote, origin: next.agentProcess?.origin, stabilized, surfaceID, now: now)
     // Limit logging to meaningful transitions - agent identity or
     // stabilized state changes. Raw oscillation and `seen` flips are
     // routine and would otherwise dominate the log stream.
@@ -257,6 +257,18 @@ extension WorktreeTerminalState {
   /// The screen half of one poll. A verified OSC 7501 root record decides the state,
   /// so the delegated tick does not read the screen at all: the last scan stands in
   /// as the raw state and as the resolver's text (docs-ai 079).
+  /// The published remote context, nil for a local agent. Evidence decides the state only
+  /// when the stabilized state is known and, inside tmux, a capture is fresh: the state
+  /// machine keeps the last stable state for display when it is given an unknown.
+  private func remoteContext(
+    _ remote: RemotePaneTracker.Observation?, origin: ProcessOrigin?, _ stabilized: AgentRawState,
+    _ surfaceID: UUID, now: Date
+  ) -> RemoteAgentContext? {
+    guard origin != .local else { return nil }
+    let known = stabilized != .unknown && remotePaneTrackers[surfaceID]?.tmuxScreen() != .unavailable
+    return remote?.context(now: now, stateKnown: known)
+  }
+
   private func pollScreen(
     for view: GhosttySurfaceView, surfaceID: UUID, agent: DetectedAgent, delegated: Bool
   ) -> (activeText: String, detection: AgentScreenDetection) {
@@ -267,7 +279,25 @@ extension WorktreeTerminalState {
         lastScan?.detection ?? AgentScreenDetection(state: .unknown, reason: .noRuleMatched)
       )
     }
-    let activeText = view.bridge.readActiveText() ?? ""
+    let localText = view.bridge.readActiveText() ?? ""
+    if let tmuxScreen = remotePaneTrackers[surfaceID]?.tmuxScreen() {
+      // Inside tmux the local screen is the tmux client's (status line, other panes, copy
+      // mode); the agent's own screen is the capture. A local change still means the
+      // capture is likely stale, so it asks for a probe now.
+      let localHash = localText.hashValue
+      if tmuxLocalScreenHashBySurface.updateValue(localHash, forKey: surfaceID) != localHash {
+        remotePaneTrackers[surfaceID]?.requestRefreshForScreenChange()
+      }
+      guard case .capture(let text) = tmuxScreen else {
+        // No fresh capture: nothing the cache holds may answer a condition either.
+        let unknown = AgentScreenDetection(state: .unknown, reason: .noRuleMatched)
+        lastAgentScreenScanBySurface[surfaceID] = AgentScreenScan(agent: agent, text: "", detection: unknown)
+        return ("", unknown)
+      }
+      return (text, cachedScreenDetection(forSurfaceID: surfaceID, agent: agent, text: text))
+    }
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
+    let activeText = localText
     // Reuse the previous scan while the screen and detected agent are unchanged.
     // A live-but-idle agent is polled every 300 ms and `detectState` re-splits,
     // lowercases, and scans the whole screen each time; skipping that for
@@ -320,9 +350,19 @@ extension WorktreeTerminalState {
   private func observeRemoteAgent(
     job: ForegroundJob?, localIdentified: IdentifiedAgentProcess?, surfaceID: UUID, now: Date
   ) -> RemotePaneTracker.Observation? {
-    guard remoteAgentDetectionEnabled else {
+    switch remoteAgentDetectionMode {
+    case .enabled:
+      break
+    case .disabled:
       retireRemotePaneTracker(surfaceID: surfaceID)
       setRemoteIndicator(nil, surfaceID: surfaceID)
+      return nil
+    case .awaitingConsent:
+      retireRemotePaneTracker(surfaceID: surfaceID)
+      setRemoteIndicator(nil, surfaceID: surfaceID)
+      if let job, localIdentified == nil, let ssh = Self.foregroundSSH(job) {
+        askRemoteAgentConsent(surfaceID: surfaceID, ssh: ssh)
+      }
       return nil
     }
     let tracker: RemotePaneTracker
@@ -480,7 +520,8 @@ extension WorktreeTerminalState {
       invocation: SSHInvocation.parse(
         ssh.arguments, workingDirectory: ProcessDetection.currentDirectory(pid: ssh.generation.pid)),
       fenceHistory: remoteFenceHistoryBySurface[surfaceID]?[ssh.generation],
-      source: remoteSnapshotSourceForTesting ?? .live
+      source: remoteSnapshotSourceForTesting ?? .live,
+      uptime: remoteUptimeForTesting ?? { ProcessInfo.processInfo.systemUptime }
     ) { [weak self] in
       self?.wakeAgentDetectionForRemoteSnapshot(surfaceID: surfaceID)
     }
@@ -514,6 +555,40 @@ extension WorktreeTerminalState {
       return (LocalProcessGeneration(pid: pid, startedAt: startedAt), Array(arguments.dropFirst()))
     }
     return nil
+  }
+
+  /// Asks once per `ssh` whether Prowl may open its own connection (docs-ai 082, L0 item 12).
+  /// It only parses the command line: no `ssh -G`, no connection. An `ssh` outside the
+  /// grammar would get no side channel, so it does not ask.
+  private func askRemoteAgentConsent(
+    surfaceID: UUID, ssh: (generation: LocalProcessGeneration, arguments: [String])
+  ) {
+    guard remoteConsentAskedSSHBySurface[surfaceID] != ssh.generation else { return }
+    remoteConsentAskedSSHBySurface[surfaceID] = ssh.generation
+    guard case .supported(let recipe) = SSHInvocation.parse(ssh.arguments) else { return }
+    onRemoteAgentConsentNeeded?(surfaceID, recipe.destination)
+  }
+
+  /// Applies the stored answer. A change of mode runs one tick on every pane: a pane whose
+  /// loop went cold while detection was off or waiting has nothing else to wake it, and its
+  /// open `ssh` must be read (or let go) without a reconnect or a key press. A pane that
+  /// gets a tracker keeps ticking (`remoteAdjustedInterval`); the others go cold again.
+  func setRemoteAgentDetectionConsent(_ consent: RemoteAgentDetectionConsent) {
+    guard remoteAgentDetectionConsent != consent else { return }
+    let previousMode = remoteAgentDetectionMode
+    remoteAgentDetectionConsent = consent
+    guard remoteAgentDetectionMode != previousMode else { return }
+    if remoteAgentDetectionMode == .enabled { remoteConsentAskedSSHBySurface.removeAll() }
+    let now = Date()
+    for (surfaceID, view) in surfaces {
+      guard let tabId = tabId(containing: surfaceID) else { continue }
+      // A cold pane has no state, and a tick cannot publish an agent without one.
+      if surfaceAgentStates[surfaceID] == nil {
+        surfaceAgentStates[surfaceID] = PaneAgentState(lastChangedAt: now)
+      }
+      startAgentDetectionTaskIfNeeded(for: view, tabId: tabId)
+      interruptAgentDetectionSleep(forSurfaceID: surfaceID)
+    }
   }
 
   func retireRemotePaneTracker(surfaceID: UUID) {
@@ -665,6 +740,7 @@ extension WorktreeTerminalState {
     agentDetectionCoordinators.removeValue(forKey: surfaceID)?.invalidate()
     surfaceAgentStates[surfaceID] = PaneAgentState(lastChangedAt: Date())
     lastAgentScreenScanBySurface.removeValue(forKey: surfaceID)
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceID)
     let hadPublishedEntry = lastEmittedAgentEntriesBySurface.removeValue(forKey: surfaceID) != nil
     // The launch identity lives exactly as long as the launched agent
     // (docs-ai 053/006): once the pane is a bare shell again, a manually
@@ -870,6 +946,7 @@ extension WorktreeTerminalState {
     agentDetectionPresenceBySurface.removeValue(forKey: surfaceId)
     lastAgentDetectionDiagnosticsBySurface.removeValue(forKey: surfaceId)
     lastAgentScreenScanBySurface.removeValue(forKey: surfaceId)
+    tmuxLocalScreenHashBySurface.removeValue(forKey: surfaceId)
     let hadPublishedEntry = lastEmittedAgentEntriesBySurface.removeValue(forKey: surfaceId) != nil
     lastAgentEntryEmitAtBySurface.removeValue(forKey: surfaceId)
     pendingAgentEntryBySurface.removeValue(forKey: surfaceId)
@@ -906,6 +983,7 @@ extension WorktreeTerminalState {
     agentDetectionPresenceBySurface.removeAll()
     lastAgentDetectionDiagnosticsBySurface.removeAll()
     lastAgentScreenScanBySurface.removeAll()
+    tmuxLocalScreenHashBySurface.removeAll()
     lastEmittedAgentEntriesBySurface.removeAll()
     lastAgentEntryEmitAtBySurface.removeAll()
     pendingAgentEntryBySurface.removeAll()

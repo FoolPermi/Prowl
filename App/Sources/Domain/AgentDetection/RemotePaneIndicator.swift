@@ -4,6 +4,9 @@ import Foundation
 nonisolated enum RemotePaneIndicator: Hashable, Sendable {
   /// How long the pane says that its `ssh` ended.
   static let endedMarkerDuration: TimeInterval = 5
+  /// How long the pane names the host after the label appears or changes, before it
+  /// shows only its glyph.
+  static let hostLabelDuration: TimeInterval = 5
 
   /// The pane's foreground `ssh` (this local generation) reaches this host. `issue` is the
   /// correlation that keeps Prowl from reading the pane's agents, whether or not an agent
@@ -28,7 +31,7 @@ nonisolated enum RemotePaneIndicator: Hashable, Sendable {
   static func issue(_ correlation: RemotePaneCorrelation) -> RemotePaneCorrelation? {
     switch correlation {
     case .pending, .correlated: nil
-    case .ambiguous, .unmapped, .probeUnavailable, .unsupported: correlation
+    case .ambiguous, .unmapped, .probeUnavailable, .unsupported, .tmuxUnreachable: correlation
     }
   }
 }

@@ -47,7 +47,9 @@ extension GhosttySurfaceView {
   override func accessibilityHelp() -> String? {
     let remote = RemoteAgentPresentation.paneAccessibility(bridge.state.remoteIndicator, now: Date()).help
     let parts = [accessibilityPaneIndexHelp, remote].compactMap(\.self)
-    return parts.isEmpty ? nil : parts.joined(separator: " ")
+    // "Pane n of m" has no end punctuation in any language, so a space would run it into
+    // the next sentence; VoiceOver pauses at a line break.
+    return parts.isEmpty ? nil : parts.joined(separator: "\n")
   }
 
   override func accessibilitySelectedTextRange() -> NSRange {
