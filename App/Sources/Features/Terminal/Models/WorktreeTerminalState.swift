@@ -251,6 +251,7 @@ final class WorktreeTerminalState {
   @ObservationIgnored var remoteFenceHistoryBySurface: [UUID: [LocalProcessGeneration: RemoteFenceHistory]] = [:]
   @ObservationIgnored var remoteSnapshotSourceForTesting: RemoteSnapshotSource?
   @ObservationIgnored var remoteUptimeForTesting: (() -> TimeInterval)?
+
   /// Overrides the mode in tests: true is `.enabled`, false `.disabled`.
   @ObservationIgnored var remoteAgentDetectionEnabledForTesting: Bool?
   @ObservationIgnored var remoteDetectionEnvironmentForTesting: [String: String]?

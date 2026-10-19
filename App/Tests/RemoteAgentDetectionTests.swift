@@ -13,6 +13,10 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct RemoteAgentDetectionTests {
+  /// A fixed host uptime: freshness windows count from it, so a slow run never makes a
+  /// snapshot stale between the test's steps.
+  private static let uptime: TimeInterval = 1_000
+
   private struct Fixture {
     let state: WorktreeTerminalState
     let tabID: TerminalTabID
@@ -86,6 +90,7 @@ struct RemoteAgentDetectionTests {
     let source = FakeRemoteSource()
     state.remoteAgentDetectionEnabledForTesting = enabled
     state.remoteSnapshotSourceForTesting = source.source
+    state.remoteUptimeForTesting = { Self.uptime }
     state.programStatusSupportForTesting = { _ in .verified }
     state.agentProcessProbeForTesting = { _, _, _ in
       if let entered = probe.entered {
@@ -149,10 +154,9 @@ struct RemoteAgentDetectionTests {
     }
     var sessions = [session(pane)]
     if let extraPane { sessions.append(session(extraPane)) }
-    let now = ProcessInfo.processInfo.systemUptime
     return RemoteProbeSnapshot(
       connection: ConnectionKey(user: "onevcat", hostname: "mini.local"), connectionEpoch: epoch, sequence: sequence,
-      startedAt: now, finishedAt: now, outcome: outcome,
+      startedAt: Self.uptime, finishedAt: Self.uptime, outcome: outcome,
       report: RemoteProbeReport(operatingSystem: .linux, bootID: bootID, sessions: sessions))
   }
 
@@ -228,11 +232,8 @@ struct RemoteAgentDetectionTests {
   }
 
   /// Waits for the tracker's consumer task, which runs on the main actor between test steps.
-  private func settle(_ condition: () -> Bool) async {
-    for _ in 0..<1_000 where !condition() {
-      await Task.yield()
-    }
-    #expect(condition())
+  private func settle(sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool) async {
+    await waitUntil(sourceLocation: sourceLocation, condition)
   }
 
   private func deliver(_ fixture: Fixture, _ snapshot: RemoteProbeSnapshot) async {
@@ -1059,8 +1060,11 @@ struct RemoteAgentDetectionTests {
     let tracker = try #require(fixture.state.remotePaneTrackers[fixture.surfaceID])
     await settle { tracker.correlation == .probeUnavailable(nil) }
 
-    fixture.state.handleProgramStatus(report(.working), surfaceID: fixture.surfaceID)
-    await detect(fixture)
+    // A base past the real clock: the report and the ticks after it share one time, so a
+    // slow run never ages the report (a tick fences at `max(now, Date())`).
+    let later = Date().addingTimeInterval(3_600)
+    fixture.state.handleProgramStatus(report(.working), surfaceID: fixture.surfaceID, now: later)
+    await detect(fixture, now: later)
     let pane = fixture.state.surfaceAgentStates[fixture.surfaceID]
     #expect(pane?.agentProcess == .unprobedRemote(sshGeneration))
     #expect(pane?.decision?.reason.identifier == "osc.working")
@@ -1070,14 +1074,14 @@ struct RemoteAgentDetectionTests {
     #expect(pane?.session == nil)
 
     // A withdrawal or quiet producer never releases it; the observation turns stale instead.
-    fixture.state.handleProgramStatus(report(.clear), surfaceID: fixture.surfaceID)
-    await detect(fixture, now: Date().addingTimeInterval(11))
+    fixture.state.handleProgramStatus(report(.clear), surfaceID: fixture.surfaceID, now: later)
+    await detect(fixture, now: later.addingTimeInterval(11))
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == .unprobedRemote(sshGeneration))
     #expect(removed.isEmpty)
     #expect(emitted.last?.remote?.isStale == true)
     // Only the `ssh` exit releases it.
     probe.job = shellJob
-    await detect(fixture)
+    await detect(fixture, now: later)
     #expect(removed == [fixture.surfaceID])
   }
 
@@ -1186,16 +1190,19 @@ struct RemoteAgentDetectionTests {
     await detect(fixture, screen: .unknown)
     var tracker = try #require(fixture.state.remotePaneTrackers[fixture.surfaceID])
     await settle { tracker.correlation == .probeUnavailable(nil) }
-    fixture.state.handleProgramStatus(report(.blocked), surfaceID: fixture.surfaceID)
-    await detect(fixture, screen: .unknown)
+    // A base past the real clock: the report and the ticks after it share one time, so a
+    // slow run never ages the report (a tick fences at `max(now, Date())`).
+    let later = Date().addingTimeInterval(3_600)
+    fixture.state.handleProgramStatus(report(.blocked), surfaceID: fixture.surfaceID, now: later)
+    await detect(fixture, screen: .unknown, now: later)
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == .unprobedRemote(sshGeneration))
     // Close (retained for undo) and undo; the producer stays quiet.
     fixture.state.retireRemotePaneTracker(surfaceID: fixture.surfaceID)
     fixture.state.surfaceAgentStates[fixture.surfaceID] = PaneAgentState(lastChangedAt: Date())
-    await detect(fixture, screen: .unknown)
+    await detect(fixture, screen: .unknown, now: later)
     tracker = try #require(fixture.state.remotePaneTrackers[fixture.surfaceID])
     await settle { tracker.correlation == .probeUnavailable(nil) }
-    await detect(fixture, screen: .unknown)
+    await detect(fixture, screen: .unknown, now: later)
     let pane = fixture.state.surfaceAgentStates[fixture.surfaceID]
     #expect(pane?.agentProcess == .unprobedRemote(sshGeneration))
     #expect(pane?.detectedAgent == .claude)
@@ -1238,20 +1245,23 @@ struct RemoteAgentDetectionTests {
     await detect(fixture, screen: .unknown)
     let tracker = try #require(fixture.state.remotePaneTrackers[fixture.surfaceID])
     await settle { tracker.correlation == .probeUnavailable(nil) }
-    fixture.state.handleProgramStatus(report(.idle), surfaceID: fixture.surfaceID)
-    await detect(fixture, screen: .unknown)
+    // A base past the real clock: the report and the ticks after it share one time, so a
+    // slow run never ages the report (a tick fences at `max(now, Date())`).
+    let later = Date().addingTimeInterval(3_600)
+    fixture.state.handleProgramStatus(report(.idle), surfaceID: fixture.surfaceID, now: later)
+    await detect(fixture, screen: .unknown, now: later)
     #expect(emitted.last?.remote?.isStale == false)
     // A tick whose local probe reads nothing keeps the binding and its fresh confirmation.
     probe.job = nil
-    await detect(fixture, screen: .unknown)
+    await detect(fixture, screen: .unknown, now: later)
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.agentProcess == .unprobedRemote(sshGeneration))
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.remote?.isStale == false)
     // Stale only once the report is older than ten seconds.
-    await detect(fixture, screen: .unknown, now: Date().addingTimeInterval(11))
+    await detect(fixture, screen: .unknown, now: later.addingTimeInterval(11))
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.remote?.isStale == true)
     // A newer eligible report during the gap refreshes it.
-    fixture.state.handleProgramStatus(report(.working), surfaceID: fixture.surfaceID)
-    await detect(fixture, screen: .unknown)
+    fixture.state.handleProgramStatus(report(.working), surfaceID: fixture.surfaceID, now: later.addingTimeInterval(12))
+    await detect(fixture, screen: .unknown, now: later.addingTimeInterval(12))
     #expect(fixture.state.surfaceAgentStates[fixture.surfaceID]?.remote?.isStale == false)
   }
 
