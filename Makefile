@@ -61,7 +61,7 @@ XCODEBUILD_FLAGS ?=
 BUILD_BENCHMARK_SCENARIO ?= ci
 BUILD_BENCHMARK_SAMPLES ?= 1
 CLI_INTEGRATION_TEST_FILTER ?= ProwlCLIIntegrationTests
-FORMAT_BASE_REF ?= origin/main
+FORMAT_BASE_REF ?= origin/master
 # The same source set as before the move to the product layout (docs-ai 074).
 SWIFT_FORMAT_PATHS := App/Sources App/Tests Shared/Sources/ProwlCLIShared Mirror/Relay/Sources/MirrorRelayProtocol
 BUILD_SETTINGS_CACHE := $(CURRENT_MAKEFILE_DIR)/.build_settings_cache.json
@@ -656,7 +656,7 @@ _test-agent-contract-export: ensure-ghostty embed-cli-debug embed-docs embed-ski
 format: # Format all Swift code with swift-format (full-tree cleanup)
 	swift-format -p --in-place --recursive --configuration ./.swift-format.json $(SWIFT_FORMAT_PATHS)
 
-format-changed: # Format Swift files changed from FORMAT_BASE_REF (default: origin/main)
+format-changed: # Format Swift files changed from FORMAT_BASE_REF (default: origin/master)
 	@base="$$(git merge-base HEAD "$(FORMAT_BASE_REF)" 2>/dev/null || git rev-parse HEAD)"; \
 	files="$$( \
 		{ \

@@ -114,11 +114,11 @@ fi
 # Releasing from a stale checkout starts the build-number monotonicity guard
 # from an outdated CURRENT_PROJECT_VERSION and merges outdated appcast history,
 # which can publish a Sparkle item that sorts below the live latest build.
-log "checking checkout freshness against origin/main..."
+log "checking checkout freshness against origin/master..."
 git fetch --quiet origin || die "cannot fetch origin — network is required for a release"
-git rev-parse --verify --quiet origin/main >/dev/null || die "origin/main not found — cannot verify checkout freshness"
-if ! git merge-base --is-ancestor origin/main HEAD; then
-  die "HEAD does not contain origin/main — sync your checkout (git pull) before releasing"
+git rev-parse --verify --quiet origin/master >/dev/null || die "origin/master not found — cannot verify checkout freshness"
+if ! git merge-base --is-ancestor origin/master HEAD; then
+  die "HEAD does not contain origin/master — sync your checkout (git pull) before releasing"
 fi
 
 REPO="${GH_REPO:-$(origin_repo_from_remote || true)}"

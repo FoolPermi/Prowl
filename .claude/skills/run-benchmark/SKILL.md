@@ -35,7 +35,7 @@ measurement methodology (why workload context matters, why load kills comparabil
 Gather evidence before guessing:
 
 - The user's own words in the invocation — these override everything below.
-- `git branch --show-current`; `BASE=$(git merge-base HEAD origin/main)`;
+- `git branch --show-current`; `BASE=$(git merge-base HEAD origin/master)`;
   `git diff --name-only $BASE` and `git log --oneline $BASE..HEAD`.
 - Map changed files through the table in **Reference** to see which benchmark suites the
   branch can plausibly affect.
