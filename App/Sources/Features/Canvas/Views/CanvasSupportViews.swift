@@ -93,6 +93,15 @@ class CanvasScrollCoordinator {
     offset.wrappedValue = newOffset
     lastOffset.wrappedValue = newOffset
   }
+
+  // Avoid the inferred MainActor-isolated deinit: released from SwiftUI's observation
+  // tracking, it hits the old runtime's TaskLocal invalid-free bug (swiftlang/swift#85204,
+  // #88036). There is no actor-bound cleanup; see the same workaround in CanvasLayoutStore.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
 }
 
 private final class CanvasViewportAnimationTimerBox {
@@ -175,6 +184,15 @@ final class CanvasViewportAnimator {
   private func lerp(_ start: CGFloat, _ end: CGFloat, _ fraction: CGFloat) -> CGFloat {
     start + (end - start) * fraction
   }
+
+  // Avoid the inferred MainActor-isolated deinit: released from SwiftUI's observation
+  // tracking, it hits the old runtime's TaskLocal invalid-free bug (swiftlang/swift#85204,
+  // #88036). Nothing here needs actor-bound cleanup; the timer box invalidates itself.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
 }
 
 /// Pure zoom math, extracted for testability.
@@ -601,6 +619,15 @@ class CanvasScrollContainerView: NSView {
     tearDownMiddleButtonMonitor()
     super.removeFromSuperview()
   }
+
+  // Avoid the inferred MainActor-isolated deinit: released from SwiftUI's observation
+  // tracking, it hits the old runtime's TaskLocal invalid-free bug (swiftlang/swift#85204,
+  // #88036). Monitors are torn down in `removeFromSuperview`.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
 }
 
 /// Screen-space transform for a card on canvas.
