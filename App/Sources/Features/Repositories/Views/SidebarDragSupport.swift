@@ -398,11 +398,10 @@ private enum SidebarDragEndMonitor {
   private static var generation = 0
 
   static func armWhenUnsupported(_ onEnd: @escaping @MainActor () -> Void) {
-    #if PROWL_LIQUID_GLASS
-      // macOS 26 reports the end of the drag through `onDragSessionUpdated`; only earlier systems
-      // need this monitor, so the gate is a runtime check and not an SDK check.
-      if #available(macOS 26.0, *) { return }
-    #endif
+    // macOS 26 reports the end of the drag through `onDragSessionUpdated`; only earlier systems
+    // need this monitor, so the gate is the runtime check `LiquidGlass.isAvailable`, not the SDK
+    // one, because an SDK-26 build still runs on macOS 15.
+    if LiquidGlass.isAvailable { return }
     removeMonitor()
     generation += 1
     let armed = generation
