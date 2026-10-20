@@ -868,9 +868,9 @@ private struct ShortcutSymbolsView: View {
 }
 
 private struct CommandPaletteShortcutHandler: View {
-  /// The palette shows at most five rows, so the ⌘1–⌘5 carriers are unrolled instead of built
-  /// with `ForEach`: the Swift 6.1 type checker otherwise resolves `ForEach` to Charts' overload
-  /// in this file and fails with a `ChartContentBuilder` error.
+  /// The palette shows at most five rows (`items.prefix(5)` at the call site), so the
+  /// ⌘1–⌘5 carriers are unrolled instead of built with `ForEach`: the `ForEach` version made the
+  /// Swift 6.1 type checker give up on this view body.
   let items: [CommandPaletteItem]
   let activate: (CommandPaletteItem.ID) -> Void
 

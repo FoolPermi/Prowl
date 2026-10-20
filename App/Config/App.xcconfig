@@ -23,8 +23,10 @@ MACOSX_DEPLOYMENT_TARGET = 15.0
 // FoundationModels only exists in the macOS 26 SDK while the app deploys to macOS 15.
 // Weak-link it under the SDKs that have it, so a binary built there still launches on
 // macOS 15, and keep Swift from autolinking the framework strongly in the same build.
-// SDK conditions cover every 20-and-later SDK; older SDKs do not have the framework and
-// must not receive the flag, which would fail at link time.
+// `macosx2*` matches every macOS 2x SDK (26, 27, 28, 29); an SDK named `macosx30` would need a
+// second condition, or this build would link FoundationModels strongly again and stop launching
+// on macOS 15. Older SDKs have no such framework and must not receive the flag, which would fail
+// at link time.
 PROWL_WEAK_FRAMEWORKS[sdk=macosx2*] = -weak_framework FoundationModels
 OTHER_LDFLAGS = $(inherited) -lc++ -framework GameController $(PROWL_WEAK_FRAMEWORKS)
 OTHER_SWIFT_FLAGS = $(inherited) -Xcc -Wno-incomplete-umbrella -Xfrontend -disable-autolink-framework -Xfrontend FoundationModels
@@ -33,6 +35,7 @@ PRODUCT_MODULE_NAME = Prowl
 // the macOS 26 SDK. Source cannot test the SDK version directly, and a compiler check would be
 // wrong (a Swift 6.2 compiler also builds against the macOS 15 SDK), so the SDK that is
 // actually selected defines the condition that Support/LiquidGlassSupport.swift reads.
+// The same `macosx2*` caveat applies: an SDK named `macosx30` would need its own condition here.
 SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=macosx2*] = $(inherited) PROWL_LIQUID_GLASS
 REGISTER_APP_GROUPS = YES
 RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO

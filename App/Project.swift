@@ -59,12 +59,12 @@ let project = Project(
     disableBundleAccessors: true,
     disableSynthesizedResourceAccessors: true
   ),
-  // Prowl deploys to macOS 15 and builds with Xcode 26 (Swift 6.2), so every package is held
-  // at the newest release whose manifest still works there. The newest pointfree releases
-  // declare `swift-tools-version: 6.4` and therefore need Xcode 27, which does not run on
-  // macOS 15. Transitive packages are pinned by exact version too: a `from:` requirement
-  // would resolve them to those Swift 6.4 releases again. Bump a pin only together with the
-  // Xcode floor in AGENTS.md.
+  // Prowl deploys to macOS 15 and builds with Xcode 16.4 (Swift 6.1) or Xcode 26 (Swift 6.2), so
+  // every package is held at the newest release whose manifest still works on both. The newest
+  // pointfree releases declare `swift-tools-version: 6.4` and therefore need Xcode 27, which does
+  // not run on macOS 15. Transitive packages are pinned by exact version too: a `from:`
+  // requirement would resolve them to those Swift 6.4 releases again. Bump a pin only together
+  // with the toolchain floor in AGENTS.md.
   packages: [
     .package(path: "../Shared"),
     // Upstream GlyphonKit declares macOS 26 and imports FoundationModels unconditionally;

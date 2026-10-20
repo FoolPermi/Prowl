@@ -60,10 +60,15 @@ move to `MACOSX_DEPLOYMENT_TARGET = 15.0`. `Mirror/iOS` keeps its iOS 18.0 floor
 | `ToolbarGroupSpacer` | `ToolbarSpacer(.fixed)` | empty `ToolbarItem` |
 | `prowlHidingSharedBackground()` | `sharedBackgroundVisibility(.hidden)` | no-op (items draw their own background) |
 | `prowlRemovingToolbarTitle()` | `toolbar(removing: .title)` | `NSWindow.titleVisibility = .hidden` |
+| `worktreeDragSessionUpdates(_:)` / `sidebarDragSessionEnded(_:)` | `onDragSessionUpdated` | `SidebarDragEndMonitor` (mouse-up) |
+| `GhosttySearchOverlayShape.path(in:)` (inline, same file) | `ConcentricRectangle` | `RoundedRectangle(cornerRadius: 8)` |
 
 Each helper gates twice: `#if PROWL_LIQUID_GLASS` because an older SDK does not declare the
 symbols at all (`@available` cannot rescue a missing symbol), and `#available(macOS 26.0, *)`
-because a binary built against the macOS 26 SDK must not call them on macOS 15.
+because a binary built against the macOS 26 SDK must not call them on macOS 15. The pairing
+matters in both directions: a fallback that is only compiled under `#if !PROWL_LIQUID_GLASS`
+disappears from an SDK-26 build, which still runs on macOS 15, so such a fallback has to be
+reached through a runtime `#available` check instead.
 
 `PROWL_LIQUID_GLASS` is a compilation condition defined by the SDK that is actually selected
 (`SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=macosx2*]` in `App/Config/App.xcconfig`). A
@@ -163,3 +168,13 @@ Running the app and its tests on macOS 15 surfaced real differences, not just is
 | `#if compiler(>=6.2)` only, no `@available` | A macOS 26 SDK build would then call Liquid Glass on macOS 15 at runtime. |
 
 ## Amendments
+
+- **Path-derived identifiers (2026-10-19).** §7's trailing-slash fix covered worktree paths only.
+  Repository ids, workspace-child ids, and the ids restored from the repository snapshot cache
+  are path-derived too, and `URL.path(percentEncoded:)` appends "/" for an existing directory on
+  macOS 15, so those ids differed from the canonical worktree ids and were OS-dependent. All of
+  them now go through `PathPolicy.trimmingTrailingSlash`, which `PathPolicy.normalizePath` applies
+  as well, so one directory always renders as one string.
+- **SDK conditions (2026-10-19).** `sdk=macosx2*` covers the macOS 20–29 SDKs, not "every later
+  SDK"; an SDK named `macosx30` needs its own condition or the app links FoundationModels
+  strongly again and loses Liquid Glass. Recorded in `App/Config/App.xcconfig`.

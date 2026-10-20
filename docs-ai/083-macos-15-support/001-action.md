@@ -7,6 +7,7 @@
 | 2026-10-19 | Deployment target to 15.0, SDK-gated Liquid Glass helpers, weak-linked Foundation Models | `382c51c` |
 | 2026-10-19 | Swift 6.1 build support: exact package pins, vendored GlyphonKit, explicit isolation, macOS 15 portability fixes, test adjustments | `a4a1d2c` + the follow-up commit below |
 | 2026-10-19 | Toolchain moved to Xcode 26.3 / macOS 26.2 SDK (Swift 6.2.4); macOS 26 branches now compile, weak link and macOS 15 runtime verified, app tests green | this commit |
+| 2026-10-19 | Review round: `make format-changed` actually formats every changed file, the macOS 15 drag-end fallback runs on a runtime availability check, one Sparkle updater per process, path-derived ids canonicalized through `PathPolicy` | this commit |
 
 ## Outcome & current state (as of 2026-10-19)
 
@@ -88,6 +89,33 @@ with Swift 6.1 and keeps the macOS 26 features:
 - The plan did not anticipate the Foundation trailing-slash difference, the `_np` spawn
   symbol, the `UpdaterClient` dependency being resolved off the main actor, or the deinit
   access rules. All are recorded above.
+
+## Review corrections (2026-10-19)
+
+A read-through of the branch before publishing found six defects; all are fixed here.
+
+- `make format-changed` piped the newline-joined file list into `printf '%s\0'` as one argument,
+  so with two or more changed files `xargs -0` handed `swift-format` a single nonexistent path and
+  the target silently formatted nothing — the failure it was written to fix, in a new shape. It now
+  converts the list to NUL separators with `tr` and reports the file count.
+- `SidebarDragEndMonitor` was armed under `#if !PROWL_LIQUID_GLASS`, which is an SDK check, while
+  the macOS 26 path uses a runtime `#available`. On an SDK-26 build running on macOS 15 neither
+  path ran, so the drag state it exists to clear was never cleared. It now returns early when
+  `onDragSessionUpdated` exists at runtime, and a deferred mouse-up handler from an earlier drag can
+  no longer clear a later drag's state (generation guard).
+- `UpdaterClient.liveValue` became a computed `static var` that starts an `SPUUpdater` on every
+  resolution; only swift-dependencies' per-lineage cache kept a second updater from being created
+  with a second (event-less) user driver. The updater is now built once, on main.
+- Repository ids, workspace-child ids, and snapshot-restored ids still used raw
+  `path(percentEncoded:)`, so on macOS 15 they carried the trailing slash Foundation appends while
+  worktree ids did not — and the ids are persisted keys. Everything path-derived now goes through
+  `PathPolicy.trimmingTrailingSlash`, which `PathPolicy.normalizePath` also applies.
+- `MainActor.assumeIsolated` was wrapped around plain `@Sendable` client closures
+  (`CLIInstallClient.installationStatus`/`isUsable`), where it only adds a trap; those calls are
+  direct again. The remaining uses all reach genuinely main-actor-bound clients.
+- `App.xcconfig` claimed `sdk=macosx2*` covers "every 20-and-later SDK"; it covers macOS 20–29.
+  Recorded, together with the `Project.swift` and command-palette comments that described the
+  toolchain and the type-checker workaround inaccurately.
 
 ## Open questions
 
