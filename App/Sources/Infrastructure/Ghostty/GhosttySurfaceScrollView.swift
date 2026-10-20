@@ -125,14 +125,15 @@ final class GhosttySurfaceScrollView: NSView {
     fatalError("init(coder:) is not supported")
   }
 
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // AppKit releases these views on the main thread.
   #if compiler(>=6.2)
-    isolated deinit {
-      removeObservers()
+    nonisolated deinit {
+      MainActor.assumeIsolated { removeObservers() }
     }
   #else
-    // Swift 6.1 has no isolated `deinit`, so this fallback traps instead of hopping like
-    // `isolated deinit` does. AppKit releases these views on the main thread: the owning
-    // terminal state is `@MainActor`.
     deinit {
       MainActor.assumeIsolated { removeObservers() }
     }

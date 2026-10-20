@@ -107,9 +107,19 @@ class CanvasScrollCoordinator {
 private final class CanvasViewportAnimationTimerBox {
   nonisolated(unsafe) var timer: Timer?
 
-  deinit {
-    timer?.invalidate()
-  }
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036). `timer` is
+  // `nonisolated(unsafe)` and invalidating it is a non-isolated call.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      timer?.invalidate()
+    }
+  #else
+    deinit {
+      timer?.invalidate()
+    }
+  #endif
 }
 
 @MainActor

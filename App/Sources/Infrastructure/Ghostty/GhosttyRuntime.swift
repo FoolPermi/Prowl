@@ -5,11 +5,10 @@ import UniformTypeIdentifiers
 
 nonisolated let ghosttyLogger = ProwlLogger("GhosttyRuntime")
 
-// Explicitly isolated rather than relying on the module's MainActor default:
-// when a Release (whole-module) build's swiftmodule is deserialized by the test
-// target, default-isolation inference is lost for the `isolated deinit` check
-// and compilation fails with "containing class is not isolated to an actor".
-// The explicit attribute is semantically identical and serializes correctly.
+// Explicitly isolated rather than relying on the module's MainActor default: Swift 6.1 has no
+// default isolation at all, and a Release (whole-module) build's swiftmodule deserialized by the
+// test target loses the inference in any case. The explicit attribute is semantically the same
+// under Swift 6.2 and serializes correctly.
 @MainActor
 final class GhosttyRuntime {
   nonisolated static let ghosttyExecutableCandidates = [
@@ -193,14 +192,26 @@ final class GhosttyRuntime {
       })
   }
 
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // A deinit has exclusive access to its own stored properties and every call below is
+  // non-isolated; the runtime may also be released off the main actor, where an
+  // `assumeIsolated` would trap.
   #if compiler(>=6.2)
-    isolated deinit {
-      releaseRuntime()
+    nonisolated deinit {
+      let center = NotificationCenter.default
+      for observer in observers {
+        center.removeObserver(observer)
+      }
+      if let app {
+        ghostty_app_free(app)
+      }
+      if let config {
+        ghostty_config_free(config)
+      }
     }
   #else
-    // Swift 6.1 has no isolated `deinit`. A deinit already has exclusive access to its own stored
-    // properties, and every call below is non-isolated, so the cleanup needs no actor hop (the
-    // runtime may be released off the main actor, and an `assumeIsolated` hop would trap).
     deinit {
       let center = NotificationCenter.default
       for observer in observers {
@@ -214,19 +225,6 @@ final class GhosttyRuntime {
       }
     }
   #endif
-
-  private func releaseRuntime() {
-    let center = NotificationCenter.default
-    for observer in observers {
-      center.removeObserver(observer)
-    }
-    if let app {
-      ghostty_app_free(app)
-    }
-    if let config {
-      ghostty_config_free(config)
-    }
-  }
 
   func setAppFocus(_ focused: Bool) {
     if let app {

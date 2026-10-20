@@ -112,14 +112,15 @@ final class WindowFocusObserverNSView: NSView {
     observers.removeAll()
   }
 
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // AppKit releases this view on the main thread.
   #if compiler(>=6.2)
-    isolated deinit {
-      clearObservers()
+    nonisolated deinit {
+      MainActor.assumeIsolated { clearObservers() }
     }
   #else
-    // Swift 6.1 has no isolated `deinit`, so this fallback traps instead of hopping like
-    // `isolated deinit` does. AppKit releases this view on the main thread: its host is a
-    // `@MainActor` AppKit/SwiftUI view.
     deinit {
       MainActor.assumeIsolated { clearObservers() }
     }

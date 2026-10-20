@@ -236,12 +236,22 @@ final class AgentIslandGlobalHotKeys {
     }
   }
 
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // `hotKeys` and `eventHandler` are `nonisolated(unsafe)`, and unregistering the Carbon hot
+  // keys is a non-isolated call.
   #if compiler(>=6.2)
-    isolated deinit {
-      stop()
+    nonisolated deinit {
+      for hotKey in hotKeys.values {
+        UnregisterEventHotKey(hotKey)
+      }
+      hotKeys.removeAll()
+      if let eventHandler {
+        RemoveEventHandler(eventHandler)
+      }
     }
   #else
-    // Swift 6.1 has no isolated `deinit`; unregistering the Carbon hot keys is non-isolated.
     deinit {
       for hotKey in hotKeys.values {
         UnregisterEventHotKey(hotKey)

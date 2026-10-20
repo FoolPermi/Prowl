@@ -32,15 +32,17 @@ final class TerminalCloseUndoKeyMonitor {
     }
   }
 
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // `monitor` is `nonisolated(unsafe)` and removing a monitor is a non-isolated call.
   #if compiler(>=6.2)
-    isolated deinit {
+    nonisolated deinit {
       if let monitor {
         NSEvent.removeMonitor(monitor)
       }
     }
   #else
-    // Swift 6.1 has no isolated `deinit`; a deinit may read its own stored properties, and
-    // removing the monitor is a non-isolated call.
     deinit {
       if let monitor {
         NSEvent.removeMonitor(monitor)

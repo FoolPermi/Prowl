@@ -339,11 +339,19 @@ private final class WindowFullScreenReaderView: NSView {
   private weak var observedWindow: NSWindow?
   private var observers: [NSObjectProtocol] = []
 
-  deinit {
-    MainActor.assumeIsolated {
-      removeObservers()
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // AppKit releases this view on the main thread.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      MainActor.assumeIsolated { removeObservers() }
     }
-  }
+  #else
+    deinit {
+      MainActor.assumeIsolated { removeObservers() }
+    }
+  #endif
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
