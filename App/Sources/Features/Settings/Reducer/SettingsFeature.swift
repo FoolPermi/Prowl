@@ -607,7 +607,7 @@ struct SettingsFeature {
             }
           }
         }
-        state.cliInstallStatus = MainActor.assumeIsolated { cliInstallClient.installationStatus(cliDefaultInstallPath) }
+        state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
         let result: CLIInstallResultMessage = path.isEmpty ? .uninstalled : .installed(path: path)
         return .send(.delegate(.cliInstallCompleted(result)))
 
@@ -621,11 +621,11 @@ struct SettingsFeature {
             TextState(error.message)
           }
         }
-        state.cliInstallStatus = MainActor.assumeIsolated { cliInstallClient.installationStatus(cliDefaultInstallPath) }
+        state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
         return .send(.delegate(.cliInstallCompleted(.failed(message: error.message))))
 
       case .refreshCLIInstallStatus:
-        state.cliInstallStatus = MainActor.assumeIsolated { cliInstallClient.installationStatus(cliDefaultInstallPath) }
+        state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
         return .none
 
       case .refreshCLIServiceStatus:

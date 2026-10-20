@@ -130,7 +130,9 @@ final class GhosttySurfaceScrollView: NSView {
       removeObservers()
     }
   #else
-    // Swift 6.1 has no isolated `deinit`; AppKit releases views on the main thread.
+    // Swift 6.1 has no isolated `deinit`, so this fallback traps instead of hopping like
+    // `isolated deinit` does. AppKit releases these views on the main thread: the owning
+    // terminal state is `@MainActor`.
     deinit {
       MainActor.assumeIsolated { removeObservers() }
     }

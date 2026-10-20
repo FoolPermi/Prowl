@@ -117,7 +117,9 @@ final class WindowFocusObserverNSView: NSView {
       clearObservers()
     }
   #else
-    // Swift 6.1 has no isolated `deinit`; AppKit releases the view on the main thread.
+    // Swift 6.1 has no isolated `deinit`, so this fallback traps instead of hopping like
+    // `isolated deinit` does. AppKit releases this view on the main thread: its host is a
+    // `@MainActor` AppKit/SwiftUI view.
     deinit {
       MainActor.assumeIsolated { clearObservers() }
     }

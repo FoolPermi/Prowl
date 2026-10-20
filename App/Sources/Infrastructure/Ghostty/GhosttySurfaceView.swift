@@ -380,7 +380,9 @@ final class GhosttySurfaceView: NSView, Identifiable {
       releaseSurfaceResources()
     }
   #else
-    // Swift 6.1 has no isolated `deinit`; AppKit releases surfaces on the main thread.
+    // Swift 6.1 has no isolated `deinit`, so this fallback traps instead of hopping like
+    // `isolated deinit` does. AppKit releases these surfaces on the main thread: the owning
+    // terminal state is `@MainActor`.
     deinit {
       MainActor.assumeIsolated { releaseSurfaceResources() }
     }

@@ -379,18 +379,15 @@ struct WorkflowsSettingsFeature {
   }
 
   private func reload(_ state: inout State) {
-    let snapshot = MainActor.assumeIsolated {
-      (
-        cliInstallClient.installationStatus(cliDefaultInstallPath),
-        cliInstallClient.isUsable(cliDefaultInstallPath),
-        cliServiceStatusClient.current(),
-        client.runTargets(state.settingsScope)
-      )
+    // `installationStatus` and `isUsable` are plain `@Sendable` closures; the status publisher and
+    // the run-target scan are main-actor bound.
+    state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
+    state.cliUsable = cliInstallClient.isUsable(cliDefaultInstallPath)
+    let mainActorSnapshot = MainActor.assumeIsolated {
+      (cliServiceStatusClient.current(), client.runTargets(state.settingsScope))
     }
-    state.cliInstallStatus = snapshot.0
-    state.cliUsable = snapshot.1
-    state.cliServiceStatus = snapshot.2
-    state.runTargets = snapshot.3
+    state.cliServiceStatus = mainActorSnapshot.0
+    state.runTargets = mainActorSnapshot.1
     do {
       let scan = try MainActor.assumeIsolated { try client.scan(state.settingsScope) }
       state.scan = scan
