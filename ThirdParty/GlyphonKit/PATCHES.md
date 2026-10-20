@@ -13,5 +13,8 @@ Keep the diff to upstream as small as possible; everything below is marked in th
 | `Sources/GlyphonKit/AIAvailability.swift` | The FoundationModels import and the availability switch sit behind `canImport` and `@available`; older SDKs and macOS 15 report `.deviceNotSupported`. |
 | `Sources/GlyphonKit/SymbolRecommender.swift` | `KeywordExtraction` and the model pipeline moved into `aiRecommendation(for:candidateLimit:)`, all behind `canImport` plus `@available(macOS 26.0, iOS 26.0, *)`. Without the model the recommender returns the same retrieval-only result it already produced when the model was unavailable. |
 
-`Tests/` and `eval/` are upstream and are not built by the app. To re-sync, copy the new upstream
-release over this directory and re-apply the three changes above.
+`eval/` (the recommender evaluation harness, its datasets and its recorded results) is not
+vendored: it is not built, not tested, and not reachable from the app, so it would only add a
+megabyte of data to this repository. `Tests/` is kept because it is small and documents the
+package's behaviour. To re-sync, copy the new upstream release over this directory, delete `eval/`
+again, and re-apply the three changes above.
