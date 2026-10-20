@@ -667,8 +667,10 @@ format-changed: # Format Swift files changed from FORMAT_BASE_REF (default: orig
 	if [ -z "$$files" ]; then \
 		echo "No changed Swift files to format."; \
 	else \
-		printf 'Formatting changed Swift files from %s\n' "$$base"; \
-		printf '%s\0' "$$files" | xargs -0 swift-format -p --in-place --configuration ./.swift-format.json; \
+		printf 'Formatting %s changed Swift file(s) from %s\n' \
+			"$$(printf '%s\n' "$$files" | wc -l | tr -d ' ')" "$$base"; \
+		printf '%s' "$$files" | tr '\n' '\0' \
+			| xargs -0 swift-format -p --in-place --configuration ./.swift-format.json; \
 	fi
 
 format-lint: # Check Swift formatting without rewriting files
