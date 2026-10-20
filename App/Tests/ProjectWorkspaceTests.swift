@@ -167,7 +167,9 @@ struct ProjectWorkspaceTests {
     defer { try? FileManager.default.removeItem(at: rootURL) }
     try writeWorkspaceJSON("{}", to: rootURL)
 
-    let rootPath = rootURL.standardizedFileURL.path(percentEncoded: false)
+    // Persisted entries are canonical: no trailing slash for an existing directory (see
+    // `PathPolicy`), so the normalizer leaves the path as the id spelling.
+    let rootPath = normalizedTestPath(rootURL)
     let normalized = RepositoryEntryNormalizer.normalize([
       PersistedRepositoryEntry(path: rootPath, kind: .git)
     ])

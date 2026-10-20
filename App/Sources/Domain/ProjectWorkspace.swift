@@ -1338,12 +1338,8 @@ nonisolated struct ProjectWorkspace: Codable, Equatable, Hashable, Sendable {
   }
 
   private static func normalizedPath(_ url: URL, resolvingSymlinks: Bool) -> String {
-    var path = PathPolicy.normalizeURL(url, resolvingSymlinks: resolvingSymlinks).path(
-      percentEncoded: false)
-    while path.count > 1, path.hasSuffix("/") {
-      path.removeLast()
-    }
-    return path
+    PathPolicy.trimmingTrailingSlash(
+      PathPolicy.normalizeURL(url, resolvingSymlinks: resolvingSymlinks).path(percentEncoded: false))
   }
 }
 

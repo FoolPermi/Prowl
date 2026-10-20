@@ -140,12 +140,12 @@ final class TargetResolver {
   ) -> Result<ResolvedTarget, TargetResolverError> {
     // macOS 15 renders directory URL paths with a trailing slash; treat "/a/b" and "/a/b/" as
     // the same selector.
-    let selector = Self.trimmingTrailingSlash(value)
+    let selector = PathPolicy.trimmingTrailingSlash(value)
     let matches = snapshot.worktrees.filter { worktree in
       worktree.id == value
         || worktree.name == value
-        || Self.trimmingTrailingSlash(worktree.id) == selector
-        || Self.trimmingTrailingSlash(worktree.path) == selector
+        || PathPolicy.trimmingTrailingSlash(worktree.id) == selector
+        || PathPolicy.trimmingTrailingSlash(worktree.path) == selector
     }
     guard !matches.isEmpty else {
       return .failure(.notFound("Worktree '\(value)' not found."))
@@ -238,11 +238,6 @@ final class TargetResolver {
   }
 
   // MARK: - Helpers
-
-  private static func trimmingTrailingSlash(_ value: String) -> String {
-    guard value.count > 1, value.hasSuffix("/") else { return value }
-    return String(value.dropLast())
-  }
 
   private func matches(tab: TargetResolutionSnapshot.Tab, selector: String) -> Bool {
     guard let handle = shortHandle(in: selector, prefix: "t") else {

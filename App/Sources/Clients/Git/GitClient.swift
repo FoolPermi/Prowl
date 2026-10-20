@@ -1440,18 +1440,17 @@ struct GitClient {
 
   /// Resolves filesystem symlinks and normalizes a worktree path so Git's raw on-disk paths
   /// compare equal to the URLs Prowl tracks internally.
-  /// A worktree path without a trailing slash, so the same directory compares equal whether or
-  /// not it still exists: macOS 15's Foundation appends "/" to an existing directory's path (and
-  /// drops it once the directory is moved away), macOS 26 does not.
+  ///
+  /// The result never keeps a trailing slash, so the same directory compares equal whether or not
+  /// it still exists: macOS 15's Foundation appends "/" to an existing directory's path (and drops
+  /// it once the directory is moved away), macOS 26 does not. See `PathPolicy`.
   nonisolated static func canonicalWorktreePath(_ path: String) -> String {
-    let canonical =
+    PathPolicy.trimmingTrailingSlash(
       URL(fileURLWithPath: path)
-      .standardizedFileURL
-      .resolvingSymlinksInPath()
-      .standardizedFileURL
-      .path(percentEncoded: false)
-    guard canonical.count > 1, canonical.hasSuffix("/") else { return canonical }
-    return String(canonical.dropLast())
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
+        .standardizedFileURL
+        .path(percentEncoded: false))
   }
 
   nonisolated static func parseGitWorktreePorcelainPaths(_ output: String) -> Set<String> {

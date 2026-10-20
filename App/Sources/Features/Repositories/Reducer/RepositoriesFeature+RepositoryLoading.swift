@@ -170,7 +170,7 @@ extension RepositoriesFeature {
               return WorktreesFetchResult(
                 entry: entry,
                 repository: Repository(
-                  id: rootURL.path(percentEncoded: false),
+                  id: PathPolicy.trimmingTrailingSlash(rootURL.path(percentEncoded: false)),
                   rootURL: rootURL,
                   name: Repository.name(for: rootURL),
                   kind: .git,
@@ -194,7 +194,7 @@ extension RepositoriesFeature {
             return WorktreesFetchResult(
               entry: entry,
               repository: Repository(
-                id: rootURL.path(percentEncoded: false),
+                id: PathPolicy.trimmingTrailingSlash(rootURL.path(percentEncoded: false)),
                 rootURL: rootURL,
                 name: workspace?.title ?? Repository.name(for: rootURL),
                 kind: .plain,

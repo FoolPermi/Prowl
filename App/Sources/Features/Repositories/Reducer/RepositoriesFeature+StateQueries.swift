@@ -204,7 +204,8 @@ extension RepositoriesFeature.State {
 
   /// Child repositories materialized inside every workspace, resolved to their
   /// on-disk working directory. Used both to refresh their live status and to
-  /// render their sidebar rows. Child id is the working-directory path string.
+  /// render their sidebar rows. Child id is the working-directory path string,
+  /// without the trailing slash macOS 15's Foundation appends (see `PathPolicy`).
   func resolvedWorkspaceChildren(in repository: Repository) -> [ResolvedWorkspaceChild] {
     guard let workspace = repository.workspace else {
       return []
@@ -212,7 +213,7 @@ extension RepositoriesFeature.State {
     return workspace.repositories.map { entry in
       let url = entry.resolvedURL(relativeTo: repository.rootURL)
       return ResolvedWorkspaceChild(
-        id: url.path(percentEncoded: false),
+        id: PathPolicy.trimmingTrailingSlash(url.path(percentEncoded: false)),
         workspaceID: repository.id,
         repositoryName: entry.name,
         metadataBranch: entry.branchName,
