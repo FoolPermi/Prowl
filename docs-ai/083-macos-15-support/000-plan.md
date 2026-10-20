@@ -135,8 +135,14 @@ app relied on becomes explicit, in the smallest form that keeps the upstream sha
 - Reducers and other nonisolated code that reads main-actor client dependencies wrap the call
   in `MainActor.assumeIsolated`, and `WorkflowRunsFeature`'s async effect `perform` is
   `@MainActor` so it matches upstream's main-actor effect work.
-- `isolated deinit` gets a `#if compiler(>=6.2)` branch and a `MainActor.assumeIsolated`
-  fallback (these owners only deallocate at process exit).
+- `isolated deinit` is not used at all. An isolated deinit runs through the back-deployed
+  `swift_task_deinitOnExecutor` on macOS 15, which corrupts task-local storage when the object is
+  released inside a task-local scope — TCA's `withDependencies` makes every action such a scope —
+  and aborts in `libmalloc` (swiftlang/swift#85204, #88036; it crashed the Canvas viewport
+  animator when the Shelf replaced the Canvas). Every owner now has a non-isolated deinit that
+  either runs the cleanup inline (state marked `nonisolated(unsafe)`) or wraps it in
+  `MainActor.assumeIsolated` for objects AppKit releases on the main thread, spelled
+  `nonisolated deinit` under Swift 6.2 and `deinit` under Swift 6.1.
 - `Animatable.animatableData` stays nonisolated with `nonisolated(unsafe)` animated storage,
   which SwiftUI only touches on the main actor.
 - Pure helpers that tests call off the main actor (path math, bucket math) are `nonisolated`.

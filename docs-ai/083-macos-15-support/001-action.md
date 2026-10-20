@@ -8,6 +8,7 @@
 | 2026-10-19 | Swift 6.1 build support: exact package pins, vendored GlyphonKit, explicit isolation, macOS 15 portability fixes, test adjustments | `a4a1d2c` + the follow-up commit below |
 | 2026-10-19 | Toolchain moved to Xcode 26.3 / macOS 26.2 SDK (Swift 6.2.4); macOS 26 branches now compile, weak link and macOS 15 runtime verified, app tests green | this commit |
 | 2026-10-19 | Review round: `make format-changed` actually formats every changed file, the macOS 15 drag-end fallback runs on a runtime availability check, one Sparkle updater per process, path-derived ids canonicalized through `PathPolicy` | this commit |
+| 2026-10-20 | Crash fix: every isolated deinit replaced with a non-isolated one, so teardown never runs through the back-deployed `swift_task_deinitOnExecutor` on macOS 15 | this commit |
 
 ## Outcome & current state (as of 2026-10-19)
 
@@ -116,6 +117,28 @@ A read-through of the branch before publishing found six defects; all are fixed 
 - `App.xcconfig` claimed `sdk=macosx2*` covers "every 20-and-later SDK"; it covers macOS 20–29.
   Recorded, together with the `Project.swift` and command-palette comments that described the
   toolchain and the type-checker workaround inaccurately.
+
+## The isolated-deinit crash (2026-10-20)
+
+The Canvas viewport animator aborted the app 35 minutes into a run (`EXC_CRASH`, `SIGABRT`,
+`___BUG_IN_CLIENT_OF_LIBMALLOC_POINTER_BEING_FREED_WAS_NOT_ALLOCATED`). The stack is a Shelf
+action (`Store.send(.repositories(.worktreeCreation(...)))`) mutating
+`pendingTerminalFocusWorktreeIDs`; SwiftUI invalidates the leaving Canvas subgraph from the
+observation callback and destroys `CanvasViewportAnimator` while the reducer's
+`withDependencies` task-locals are still active. Its `isolated deinit` hops through the
+back-deployed `swift_task_deinitOnExecutorMainActorBackDeploy`, whose task-local bookkeeping frees
+a record it did not allocate (swiftlang/swift#85204, #88036).
+
+The first fix covered the three Canvas owners. The same shape existed in every other
+main-actor class whose deinit runs during normal use, so all of them now take the non-isolated
+route: `nonisolated deinit` under Swift 6.2 and `deinit` under 6.1, with the cleanup either
+inline over `nonisolated(unsafe)` state or wrapped in `MainActor.assumeIsolated` for objects
+AppKit releases on the main thread. `SecureInput` keeps its isolated deinit: it is a `static let`
+singleton that only deallocates at process exit, where no task-local is active.
+
+`PersistentPopover`'s coordinator was restored to upstream: the branch had dropped its
+`nonisolated` deinit hop and added a `@preconcurrency` conformance, which the Swift 6.2 toolchain
+reports as having no effect, and neither was needed to build against the macOS 15 SDK.
 
 ## Open questions
 
