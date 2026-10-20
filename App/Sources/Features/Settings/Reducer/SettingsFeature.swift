@@ -629,7 +629,7 @@ struct SettingsFeature {
         return .none
 
       case .refreshCLIServiceStatus:
-        state.cliServiceStatus = cliServiceStatusClient.current()
+        state.cliServiceStatus = MainActor.assumeIsolated { cliServiceStatusClient.current() }
         return .none
 
       case .refreshDockBadgeAuthorization:

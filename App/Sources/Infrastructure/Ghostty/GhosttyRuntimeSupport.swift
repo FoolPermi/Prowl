@@ -178,7 +178,7 @@ extension NSPasteboard {
     return result
   }
 
-  static var ghosttySelection: NSPasteboard = {
+  nonisolated(unsafe) static var ghosttySelection: NSPasteboard = {
     NSPasteboard(name: .init("com.mitchellh.ghostty.selection"))
   }()
 

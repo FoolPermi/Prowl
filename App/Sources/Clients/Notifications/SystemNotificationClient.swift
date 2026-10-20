@@ -1,13 +1,14 @@
 import AppKit
 import ComposableArchitecture
 import Foundation
-import UserNotifications
+// The framework's types and delegate requirements are not Sendable in the macOS 15 SDK.
+@preconcurrency import UserNotifications
 
 private nonisolated let notificationWorktreeIDKey = "prowl.worktreeID"
 private nonisolated let notificationSurfaceIDKey = "prowl.surfaceID"
 
 @MainActor
-private final class ForegroundSystemNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+private final class ForegroundSystemNotificationDelegate: NSObject, @preconcurrency UNUserNotificationCenterDelegate {
   var onNotificationTap: ((Worktree.ID, UUID) -> Void)?
 
   func userNotificationCenter(

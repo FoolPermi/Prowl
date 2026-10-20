@@ -100,7 +100,7 @@ struct WorktreeDetailView: View {
     .navigationTitle(
       WindowTitle.compute(repositories: repositories, terminalManager: terminalManager)
     )
-    .toolbar(removing: .title)
+    .prowlRemovingToolbarTitle()
     .toolbar {
       detailToolbarContent(
         state: state, shared: sharedToolbarState,
@@ -359,7 +359,7 @@ struct WorktreeDetailView: View {
     // "unify" this back into a `ToolbarItemGroup` to match Normal — that
     // reintroduces the jump.
     if showRunButton || !state.customCommands.isEmpty {
-      ToolbarSpacer(.fixed)
+      ToolbarGroupSpacer()
       ToolbarItem(placement: .primaryAction) {
         canvasCommandCluster(state: state, showRunButton: showRunButton)
       }
@@ -1061,9 +1061,9 @@ struct WorktreeDetailView: View {
             )
           }
         }
-        .glassEffect(.regular.interactive(), in: Capsule())
+        .prowlGlass(Capsule(), interactive: true)
       }
-      .sharedBackgroundVisibility(.hidden)
+      .prowlHidingSharedBackground()
     }
   }
 
@@ -1131,7 +1131,7 @@ struct WorktreeDetailView: View {
       }
 
       if toolbarState.showDefaultEditorInToolbar {
-        ToolbarSpacer(.fixed)
+        ToolbarGroupSpacer()
         ToolbarItemGroup {
           openMenu(
             openActionSelection: toolbarState.openActionSelection,
@@ -1226,7 +1226,7 @@ struct WorktreeDetailView: View {
       // are hidden. Run and the custom commands share one group (no spacer
       // between them), matching the grouping before the toolbar toggles.
       if showRunButton || !inlineEntries.isEmpty || !overflowEntries.isEmpty {
-        ToolbarSpacer(.fixed)
+        ToolbarGroupSpacer()
       }
 
       if showRunButton {

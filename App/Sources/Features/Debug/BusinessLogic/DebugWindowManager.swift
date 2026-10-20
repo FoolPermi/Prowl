@@ -40,9 +40,6 @@ import SwiftUI
       new.collectionBehavior = [.moveToActiveSpace]
       new.toolbarStyle = .unified
       new.toolbar = NSToolbar(identifier: "DebugToolbar")
-      if #unavailable(macOS 15.0) {
-        new.toolbar?.showsBaselineSeparator = false
-      }
       new.isReleasedWhenClosed = false
       new.setContentSize(NSSize(width: 800, height: 600))
       new.minSize = NSSize(width: 700, height: 500)

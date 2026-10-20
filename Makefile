@@ -462,6 +462,11 @@ test-scripts: # Run tests for the repository's scripts
 # Real I/O deadlines run separately from the bulk suite's main-actor work. A TCA TestStore
 # enqueues all tasks of the process on the main thread while it lives, so in the bulk run a
 # task that blocks on a child process also blocks every test.
+# Swift Testing's XCTest bridge asserted ("Test already started") on the Swift 6.1 toolchain;
+# Xcode 26 runs the app tests in parallel again. Set APP_TEST_PARALLEL_ARGS to
+# `-parallel-testing-enabled NO` to diagnose a flaky parallel run.
+APP_TEST_PARALLEL_ARGS ?=
+
 test-app: ensure-ghostty ensure-project # Run app/unit tests via xcodebuild
 	@set -euo pipefail; \
 	result_root="$(CURRENT_MAKEFILE_DIR)/build/test-results"; \
@@ -476,7 +481,7 @@ test-app: ensure-ghostty ensure-project # Run app/unit tests via xcodebuild
 			set -- -derivedDataPath "$$PROWL_DERIVED_DATA_PATH" "$$@"; \
 		fi; \
 		set +e; \
-		xcodebuild "$$action" -workspace "$(XCODE_WORKSPACE)" -scheme $(APP_SCHEME) -destination "platform=macOS" -resultBundlePath "$$result_bundle" $(TEST_SIGNING_ARGS) -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) -showBuildTimingSummary SWIFT_COMPILATION_MODE=incremental "$$@" 2>&1 | tee "$$result_bundle.log" | tee >(PROWL_TEST_PROGRESS_LABEL="$${result_bundle##*/}" awk -f "$(CURRENT_MAKEFILE_DIR)/scripts/test-progress.awk" >&2) | mise exec -- xcsift -w --format toon; \
+		xcodebuild "$$action" -workspace "$(XCODE_WORKSPACE)" -scheme $(APP_SCHEME) -destination "platform=macOS" -resultBundlePath "$$result_bundle" $(TEST_SIGNING_ARGS) -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) -showBuildTimingSummary SWIFT_COMPILATION_MODE=incremental $(APP_TEST_PARALLEL_ARGS) "$$@" 2>&1 | tee "$$result_bundle.log" | tee >(PROWL_TEST_PROGRESS_LABEL="$${result_bundle##*/}" awk -f "$(CURRENT_MAKEFILE_DIR)/scripts/test-progress.awk" >&2) | mise exec -- xcsift -w --format toon; \
 		local xcodebuild_status=$${PIPESTATUS[0]}; \
 		set -e; \
 		if [ "$$action" = "test" ] && [ -d "$$result_bundle" ]; then \
@@ -653,17 +658,19 @@ format: # Format all Swift code with swift-format (full-tree cleanup)
 
 format-changed: # Format Swift files changed from FORMAT_BASE_REF (default: origin/main)
 	@base="$$(git merge-base HEAD "$(FORMAT_BASE_REF)" 2>/dev/null || git rev-parse HEAD)"; \
-	mapfile -t files < <( \
+	files="$$( \
 		{ \
 			git diff --name-only --diff-filter=ACMR "$$base" -- $(SWIFT_FORMAT_PATHS); \
 			git ls-files --others --exclude-standard -- $(SWIFT_FORMAT_PATHS); \
 		} | awk '/\.swift$$/' | sort -u \
-	); \
-	if [ "$${#files[@]}" -eq 0 ]; then \
+	)"; \
+	if [ -z "$$files" ]; then \
 		echo "No changed Swift files to format."; \
 	else \
-		printf 'Formatting %s changed Swift file(s) from %s\n' "$${#files[@]}" "$$base"; \
-		swift-format -p --in-place --configuration ./.swift-format.json "$${files[@]}"; \
+		printf 'Formatting %s changed Swift file(s) from %s\n' \
+			"$$(printf '%s\n' "$$files" | wc -l | tr -d ' ')" "$$base"; \
+		printf '%s' "$$files" | tr '\n' '\0' \
+			| xargs -0 swift-format -p --in-place --configuration ./.swift-format.json; \
 	fi
 
 format-lint: # Check Swift formatting without rewriting files

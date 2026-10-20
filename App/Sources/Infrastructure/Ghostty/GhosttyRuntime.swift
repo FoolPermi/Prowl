@@ -5,11 +5,10 @@ import UniformTypeIdentifiers
 
 nonisolated let ghosttyLogger = ProwlLogger("GhosttyRuntime")
 
-// Explicitly isolated rather than relying on the module's MainActor default:
-// when a Release (whole-module) build's swiftmodule is deserialized by the test
-// target, default-isolation inference is lost for the `isolated deinit` check
-// and compilation fails with "containing class is not isolated to an actor".
-// The explicit attribute is semantically identical and serializes correctly.
+// Explicitly isolated rather than relying on the module's MainActor default: Swift 6.1 has no
+// default isolation at all, and a Release (whole-module) build's swiftmodule deserialized by the
+// test target loses the inference in any case. The explicit attribute is semantically the same
+// under Swift 6.2 and serializes correctly.
 @MainActor
 final class GhosttyRuntime {
   nonisolated static let ghosttyExecutableCandidates = [
@@ -41,10 +40,14 @@ final class GhosttyRuntime {
     }
   }
 
-  var config: ghostty_config_t?
-  private(set) var app: ghostty_app_t?
+  // Swift 6.1's non-isolated `deinit` may only touch Sendable stored properties; the C handles
+  // are created and freed on the main thread and in `deinit`.
+  nonisolated(unsafe) var config: ghostty_config_t?
+  nonisolated(unsafe) private(set) var app: ghostty_app_t?
   private(set) var configSource: GhosttyConfigSource
-  var observers: [NSObjectProtocol] = []
+  /// Swift 6.1's non-isolated `deinit` may only touch Sendable stored properties; observer
+  /// tokens are only read on the main thread and in `deinit`.
+  nonisolated(unsafe) var observers: [NSObjectProtocol] = []
   var surfaceRefs: [SurfaceReference] = []
   var lastColorScheme: ghostty_color_scheme_e?
   var currentColorScheme: ColorScheme?
@@ -189,18 +192,39 @@ final class GhosttyRuntime {
       })
   }
 
-  isolated deinit {
-    let center = NotificationCenter.default
-    for observer in observers {
-      center.removeObserver(observer)
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // A deinit has exclusive access to its own stored properties and every call below is
+  // non-isolated; the runtime may also be released off the main actor, where an
+  // `assumeIsolated` would trap.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      let center = NotificationCenter.default
+      for observer in observers {
+        center.removeObserver(observer)
+      }
+      if let app {
+        ghostty_app_free(app)
+      }
+      if let config {
+        ghostty_config_free(config)
+      }
     }
-    if let app {
-      ghostty_app_free(app)
+  #else
+    deinit {
+      let center = NotificationCenter.default
+      for observer in observers {
+        center.removeObserver(observer)
+      }
+      if let app {
+        ghostty_app_free(app)
+      }
+      if let config {
+        ghostty_config_free(config)
+      }
     }
-    if let config {
-      ghostty_config_free(config)
-    }
-  }
+  #endif
 
   func setAppFocus(_ focused: Bool) {
     if let app {

@@ -59,16 +59,35 @@ let project = Project(
     disableBundleAccessors: true,
     disableSynthesizedResourceAccessors: true
   ),
+  // Prowl deploys to macOS 15 and builds with Xcode 16.4 (Swift 6.1) or Xcode 26 (Swift 6.2), so
+  // every package is held at the newest release whose manifest still works on both. The newest
+  // pointfree releases declare `swift-tools-version: 6.4` and therefore need Xcode 27, which does
+  // not run on macOS 15. Transitive packages are pinned by exact version too: a `from:`
+  // requirement would resolve them to those Swift 6.4 releases again. Bump a pin only together
+  // with the toolchain floor in AGENTS.md.
   packages: [
     .package(path: "../Shared"),
-    .package(url: "https://github.com/pointfreeco/swift-case-paths", from: "1.7.2"),
+    // Upstream GlyphonKit declares macOS 26 and imports FoundationModels unconditionally;
+    // SwiftPM refuses that for a macOS 15 app. See ThirdParty/GlyphonKit/PATCHES.md.
+    .package(path: "../ThirdParty/GlyphonKit"),
+    .package(url: "https://github.com/pointfreeco/swift-case-paths", .exact("1.9.2")),
     .package(url: "https://github.com/sparkle-project/Sparkle", .exact("2.9.2")),
-    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.10.1"),
-    .package(url: "https://github.com/pointfreeco/swift-composable-architecture", from: "1.0.0"),
-    .package(url: "https://github.com/getsentry/sentry-cocoa/", from: "9.0.0"),
-    .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.38.0"),
-    .package(url: "https://github.com/onevcat/YiTong.git", from: "0.2.0"),
-    .package(url: "https://github.com/onevcat/GlyphonKit.git", from: "0.1.0"),
+    .package(url: "https://github.com/pointfreeco/swift-dependencies", .exact("1.17.0")),
+    .package(url: "https://github.com/pointfreeco/swift-composable-architecture", .exact("1.26.1")),
+    .package(url: "https://github.com/getsentry/sentry-cocoa/", .exact("9.3.0")),
+    .package(url: "https://github.com/PostHog/posthog-ios.git", .exact("3.38.0")),
+    .package(url: "https://github.com/onevcat/YiTong.git", .exact("0.2.0")),
+    .package(url: "https://github.com/pointfreeco/swift-sharing", .exact("2.9.1")),
+    .package(url: "https://github.com/pointfreeco/swift-perception", .exact("2.0.11")),
+    .package(url: "https://github.com/pointfreeco/swift-navigation", .exact("2.8.0")),
+    .package(url: "https://github.com/pointfreeco/swift-custom-dump", .exact("1.7.0")),
+    .package(url: "https://github.com/pointfreeco/swift-clocks", .exact("1.1.0")),
+    .package(url: "https://github.com/pointfreeco/combine-schedulers", .exact("1.2.0")),
+    .package(url: "https://github.com/apple/swift-collections", .exact("1.2.1")),
+    .package(url: "https://github.com/swiftlang/swift-syntax", .exact("601.0.0")),
+    .package(url: "https://github.com/pointfreeco/swift-concurrency-extras", .exact("1.4.3")),
+    .package(url: "https://github.com/pointfreeco/swift-identified-collections", .exact("1.1.1")),
+    .package(url: "https://github.com/pointfreeco/xctest-dynamic-overlay", .exact("1.11.0")),
   ],
   settings: .settings(configurations: configurations("Project"), defaultSettings: .none),
   targets: [

@@ -25,10 +25,10 @@ struct WorkflowsSettingsFeatureTests {
         prompt: "Review."
     """
 
-  private static let codexProfile = AgentProfile(
+  private nonisolated static let codexProfile = AgentProfile(
     id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, name: "Codex Review",
     runtime: .codex)
-  private static let baseSettings = UserGlobalSettings(
+  private nonisolated static let baseSettings = UserGlobalSettings(
     customCommands: [], agentProfiles: [codexProfile])
 
   /// Temp user and repo directories, a client that scans them for real, and hooks to observe reveals

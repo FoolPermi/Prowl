@@ -12,6 +12,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct WorktreeTerminalStateProgramStatusTests {
+  @MainActor
   private struct Fixture {
     let state: WorktreeTerminalState
     let tabID: TerminalTabID

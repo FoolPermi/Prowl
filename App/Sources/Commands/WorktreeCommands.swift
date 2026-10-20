@@ -116,10 +116,12 @@ struct WorktreeCommands: Commands {
       .modifier(KeyboardShortcutModifier(shortcut: keyboardShortcut(for: AppShortcuts.CommandID.openWorktree)))
       .help(helpText(title: "Open Worktree", commandID: AppShortcuts.CommandID.openWorktree))
       .disabled(openSelectedWorktreeAction == nil)
-      Button(codeHostLabel) {
+      Button {
         if let codeHostWorktreeID {
           store.send(.repositories(.githubIntegration(.pullRequestAction(codeHostWorktreeID, .openOnCodeHost))))
         }
+      } label: {
+        Text(codeHostLabel)
       }
       .modifier(KeyboardShortcutModifier(shortcut: keyboardShortcut(for: AppShortcuts.CommandID.openPullRequest)))
       .help(

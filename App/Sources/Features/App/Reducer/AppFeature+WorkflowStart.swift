@@ -32,7 +32,10 @@ extension AppFeature {
       worktree = fallbackWorktree
     }
     @Dependency(WorkflowStartClient.self) var workflowStartClient
-    guard let context = workflowStartClient.context(workflowKey, worktree.id, sourceSurfaceID)
+    guard
+      let context = MainActor.assumeIsolated({
+        workflowStartClient.context(workflowKey, worktree.id, sourceSurfaceID)
+      })
     else {
       return .send(
         .repositories(
@@ -73,7 +76,7 @@ extension AppFeature {
       return
     }
     @Dependency(WorkflowStartClient.self) var workflowStartClient
-    state.workflowPaletteItems = workflowStartClient.catalog(worktree.id)
+    state.workflowPaletteItems = MainActor.assumeIsolated { workflowStartClient.catalog(worktree.id) }
   }
 }
 

@@ -12,7 +12,9 @@ import AppKit
 /// the user's real bindings decide which key it is.
 @MainActor
 final class TerminalCloseUndoKeyMonitor {
-  private var monitor: Any?
+  /// `Any?` is not Sendable, and Swift 6.1's non-isolated `deinit` may only touch Sendable
+  /// stored properties; the monitor token is only ever read on the main thread and in `deinit`.
+  nonisolated(unsafe) private var monitor: Any?
 
   /// `ownerWindow` is resolved per event: the owning view may not be in a
   /// window yet when the monitor is installed. `dispatch` returns `true`
@@ -30,11 +32,23 @@ final class TerminalCloseUndoKeyMonitor {
     }
   }
 
-  isolated deinit {
-    if let monitor {
-      NSEvent.removeMonitor(monitor)
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // `monitor` is `nonisolated(unsafe)` and removing a monitor is a non-isolated call.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      if let monitor {
+        NSEvent.removeMonitor(monitor)
+      }
     }
-  }
+  #else
+    deinit {
+      if let monitor {
+        NSEvent.removeMonitor(monitor)
+      }
+    }
+  #endif
 
   /// The event must belong to the owning window, and that window's first
   /// responder must not own undo itself: a terminal answers the key through

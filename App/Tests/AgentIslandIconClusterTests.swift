@@ -3,6 +3,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct AgentIslandIconClusterTests {
   @Test func projectionPlacesRecentNonIdleEntriesBeforeIdle() throws {
     let idle = entry(state: .idle, changedAt: 50)

@@ -788,12 +788,12 @@ extension RepositoriesFeature {
         )
       }
       let githubCLI = githubCLI
-      return .run { [refresh] send in
-        await githubCLI.retryRateLimitedRequests()
-        if let refresh {
-          await send(refresh)
-        }
-      }
+      // Build the follow-up action before the effect: the action value is not Sendable, so it
+      // cannot travel into the effect's `@Sendable` closure.
+      return .concatenate(
+        .run { _ in await githubCLI.retryRateLimitedRequests() },
+        refresh.map(Effect.send) ?? .none
+      )
     }
   }
 

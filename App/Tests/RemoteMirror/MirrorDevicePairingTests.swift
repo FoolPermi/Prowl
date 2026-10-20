@@ -71,7 +71,7 @@ struct MirrorDevicePairingTests {
     defer { other.peer.close() }
     try await other.start(stage: "second device after Host restart")
     host.revoke(firstCredential.deviceID)
-    for await closed in Observations({ resumed.closed }) where closed { break }
+    for await closed in ObservationsCompat({ resumed.closed }) where closed { break }
     #expect(!other.closed)
     #expect(host.devices.count == 1)
     other.peer.send(.list)
@@ -83,7 +83,7 @@ struct MirrorDevicePairingTests {
     let rejected = Client(port: UInt16(host.port)!, credential: firstCredential)
     defer { rejected.peer.close() }
     rejected.peer.start()
-    for await closed in Observations({ rejected.closed }) where closed { break }
+    for await closed in ObservationsCompat({ rejected.closed }) where closed { break }
     #expect(!rejected.ready)
     guard case .handshakeRejected = rejected.peer.failure else {
       Issue.record("Expected a TLS rejection, got \(String(describing: rejected.peer.failure))")
@@ -130,7 +130,7 @@ struct MirrorDevicePairingTests {
     #expect(await messages.next()?.kind == .subscribed)
     #expect(await messages.next()?.text == "current")
     clients[1].peer.close()
-    for await offline in Observations({ !host.isOnline(credentials[1].deviceID) }) where offline {
+    for await offline in ObservationsCompat({ !host.isOnline(credentials[1].deviceID) }) where offline {
       break
     }
     host.addDevice()
@@ -148,7 +148,7 @@ struct MirrorDevicePairingTests {
       #expect(host.pairingKey == oldCode)
       return
     }
-    for await closed in Observations({ clients[0].closed }) where closed { break }
+    for await closed in ObservationsCompat({ clients[0].closed }) where closed { break }
     try await listening(host)
     #expect(host.devices.isEmpty)
     #expect(host.onlineDeviceIDs.isEmpty)
@@ -168,7 +168,7 @@ struct MirrorDevicePairingTests {
     for client in rejected {
       clients.append(client)
       client.peer.start()
-      for await closed in Observations({ client.closed }) where closed { break }
+      for await closed in ObservationsCompat({ client.closed }) where closed { break }
       #expect(!client.ready)
       guard case .handshakeRejected = client.peer.failure else {
         Issue.record("Old device or pairing code was not rejected at TLS")
@@ -449,7 +449,7 @@ struct MirrorDevicePairingTests {
   }
 
   private func listening(_ host: MirrorHost) async throws {
-    for await done in Observations({ !host.isStarting || host.error != nil }) where done { break }
+    for await done in ObservationsCompat({ !host.isStarting || host.error != nil }) where done { break }
     try #require(host.error == nil)
     try #require(host.isRunning)
   }
@@ -467,6 +467,7 @@ struct MirrorDevicePairingTests {
     }
     func write(_ bytes: Data, to id: UUID) throws {}
   }
+  @MainActor
   @Observable final class Client {
     var saved: MirrorSavedConnection?
     var closed = false
@@ -499,7 +500,7 @@ struct MirrorDevicePairingTests {
     }
     func start(stage: String) async throws {
       peer.start()
-      for await done in Observations({ self.ready || self.closed }) where done { break }
+      for await done in ObservationsCompat({ self.ready || self.closed }) where done { break }
       try #require(
         ready,
         "Authentication failed during \(stage) (credential saved: \(saved?.credential != nil)): \(reason ?? "unknown")"

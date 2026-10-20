@@ -80,6 +80,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
     }
   }
 
+  @MainActor
   final class CachedValue<T> {
     private var value: T?
     private let fetch: () -> T
@@ -374,7 +375,21 @@ final class GhosttySurfaceView: NSView, Identifiable {
     fatalError("init(coder:) is not supported")
   }
 
-  isolated deinit {
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // AppKit releases these surfaces on the main thread.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      MainActor.assumeIsolated { releaseSurfaceResources() }
+    }
+  #else
+    deinit {
+      MainActor.assumeIsolated { releaseSurfaceResources() }
+    }
+  #endif
+
+  private func releaseSurfaceResources() {
     if let eventMonitor {
       NSEvent.removeMonitor(eventMonitor)
     }

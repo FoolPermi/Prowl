@@ -627,7 +627,7 @@ struct AppFeature {
         // The editor is a sheet on the main window; bring it forward from
         // the Settings window first so the sheet is not opened out of sight.
         // Surfacing is synchronous so it strictly precedes the request.
-        _ = appLifecycleClient.surfaceMainWindow()
+        _ = MainActor.assumeIsolated { appLifecycleClient.surfaceMainWindow() }
         return .send(.repositories(.workspaceEditing(.promptRequested(repositoryID, removingChildID: nil))))
 
       case .settings(.delegate(.cliInstallCompleted(let result))):
@@ -794,7 +794,7 @@ struct AppFeature {
             appLifecycleClient.terminate()
           }
         }
-        _ = appLifecycleClient.surfaceMainWindow()
+        _ = MainActor.assumeIsolated { appLifecycleClient.surfaceMainWindow() }
         state.alert = AlertState {
           TextState(String(localized: "Quit Prowl?"))
         } actions: {
@@ -821,7 +821,7 @@ struct AppFeature {
         }
 
       case .jumpToLatestUnread:
-        guard let location = terminalClient.latestUnreadNotification() else {
+        guard let location = MainActor.assumeIsolated({ terminalClient.latestUnreadNotification() }) else {
           notificationJumpLogger.debug("jumpToLatestUnread invoked with no unread notification.")
           return .none
         }
@@ -1188,7 +1188,7 @@ struct AppFeature {
         // The child reducer forwards `action` after this pass, so the window is up before the
         // sidebar path focuses a pane or presents the workflow start sheet.
         if action.surfacesProwl {
-          _ = appLifecycleClient.surfaceMainWindow()
+          _ = MainActor.assumeIsolated { appLifecycleClient.surfaceMainWindow() }
         }
         return .none
 
@@ -1196,11 +1196,11 @@ struct AppFeature {
         return .send(.settings(.setAgentIslandEnabled(!state.settings.agentIslandEnabled)))
 
       case .repositories(.activeAgents(.islandSettingsTapped)):
-        _ = appLifecycleClient.surfaceMainWindow()
+        _ = MainActor.assumeIsolated { appLifecycleClient.surfaceMainWindow() }
         return openSettingsEffect(selecting: .agentDisplay)
 
       case .repositories(.activeAgents(.islandOpenProwlTapped)):
-        _ = appLifecycleClient.surfaceMainWindow()
+        _ = MainActor.assumeIsolated { appLifecycleClient.surfaceMainWindow() }
         return .none
 
       case .repositories(.activeAgents(.runWorkflowTapped(let entryID, let workflowKey))):

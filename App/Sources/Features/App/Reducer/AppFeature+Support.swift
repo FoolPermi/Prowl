@@ -154,7 +154,7 @@ extension AppFeature {
 
   private func canvasFocusedWorktreeID(repositories: RepositoriesFeature.State) -> Worktree.ID? {
     guard repositories.isShowingCanvas else { return nil }
-    return terminalClient.canvasFocusedWorktreeID()
+    return MainActor.assumeIsolated { terminalClient.canvasFocusedWorktreeID() }
   }
 
   func terminalWorktree(
@@ -351,5 +351,5 @@ func formatCustomCommandDuration(_ durationMs: Int) -> String {
   if seconds < 10 {
     return String(format: "%.1fs", seconds)
   }
-  return WorktreeTerminalState.formatDuration(Int(seconds))
+  return MainActor.assumeIsolated { WorktreeTerminalState.formatDuration(Int(seconds)) }
 }

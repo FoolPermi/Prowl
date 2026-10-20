@@ -168,7 +168,8 @@ struct WorktreeRowsView: View {
       beginDrag: {
         draggingWorktreeIDs = [row.id]
         store.send(.worktreeOrdering(.setSidebarDragActive(true)))
-      }
+      },
+      endDrag: { endWorktreeDrag() }
     )
     .environment(\.colorScheme, colorScheme)
     .preferredColorScheme(colorScheme)
@@ -179,18 +180,8 @@ struct WorktreeRowsView: View {
         hoveredWorktreeID = nil
       }
     }
-    .onDragSessionUpdated { session in
-      // Data transfer can finish before the drag becomes active on macOS.
-      let didEnd =
-        if case .ended = session.phase {
-          true
-        } else {
-          false
-        }
-      handleWorktreeDragSession(
-        draggedIDs: Set(session.draggedItemIDs(for: Worktree.ID.self)),
-        didEnd: didEnd
-      )
+    .worktreeDragSessionUpdates { draggedIDs, didEnd in
+      handleWorktreeDragSession(draggedIDs: draggedIDs, didEnd: didEnd)
     }
   }
 

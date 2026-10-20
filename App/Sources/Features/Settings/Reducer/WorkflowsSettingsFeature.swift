@@ -274,7 +274,7 @@ struct WorkflowsSettingsFeature {
           let url = try client.createWorkflow(state.workflowDirectory, draft.request)
           state.newWorkflow = nil
           reload(&state)
-          openURLClient.open(url.appending(path: "workflow.yaml"))
+          MainActor.assumeIsolated { openURLClient.open(url.appending(path: "workflow.yaml")) }
           return .merge(
             watch(state),
             .send(.delegate(.notice(.workflowCreated(path: url.path(percentEncoded: false)))))
@@ -337,7 +337,7 @@ struct WorkflowsSettingsFeature {
         return .send(.delegate(.openProfiles))
 
       case .path(.element(id: _, action: .appeared)):
-        state.runTargets = client.runTargets(state.settingsScope)
+        state.runTargets = MainActor.assumeIsolated { client.runTargets(state.settingsScope) }
         synchronizePath(&state)
         return .none
 
@@ -379,12 +379,17 @@ struct WorkflowsSettingsFeature {
   }
 
   private func reload(_ state: inout State) {
+    // `installationStatus` and `isUsable` are plain `@Sendable` closures; the status publisher and
+    // the run-target scan are main-actor bound.
     state.cliInstallStatus = cliInstallClient.installationStatus(cliDefaultInstallPath)
     state.cliUsable = cliInstallClient.isUsable(cliDefaultInstallPath)
-    state.cliServiceStatus = cliServiceStatusClient.current()
-    state.runTargets = client.runTargets(state.settingsScope)
+    let mainActorSnapshot = MainActor.assumeIsolated {
+      (cliServiceStatusClient.current(), client.runTargets(state.settingsScope))
+    }
+    state.cliServiceStatus = mainActorSnapshot.0
+    state.runTargets = mainActorSnapshot.1
     do {
-      let scan = try client.scan(state.settingsScope)
+      let scan = try MainActor.assumeIsolated { try client.scan(state.settingsScope) }
       state.scan = scan
       state.loadError = nil
       rebuild(&state)

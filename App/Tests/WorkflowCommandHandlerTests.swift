@@ -23,6 +23,7 @@ struct WorkflowCommandHandlerTests {
         prompt: "Say hello."
     """
 
+  @MainActor
   private struct Fixture {
     let root: URL
     let userWorkflows: URL

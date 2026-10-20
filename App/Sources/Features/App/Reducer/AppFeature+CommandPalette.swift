@@ -280,7 +280,7 @@ extension AppFeature {
       guard
         let worktreeID = renameBranchCommandTargetID(
           appState: state,
-          canvasFocusedWorktreeID: terminalClient.canvasFocusedWorktreeID()
+          canvasFocusedWorktreeID: MainActor.assumeIsolated { terminalClient.canvasFocusedWorktreeID() }
         )
       else {
         return .none
@@ -312,7 +312,7 @@ extension AppFeature {
       // AppKit's post-dismiss focus reshuffle, which can hand first responder
       // to a different pane before the binding action runs.
       let command: TerminalClient.Command
-      if let surfaceID = terminalClient.selectedSurfaceID(worktree.id) {
+      if let surfaceID = MainActor.assumeIsolated({ terminalClient.selectedSurfaceID(worktree.id) }) {
         command = .performBindingActionOnSurface(worktree, surfaceID: surfaceID, action: action)
       } else {
         command = .performBindingAction(worktree, action: action)

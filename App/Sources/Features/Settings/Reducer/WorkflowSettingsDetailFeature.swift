@@ -109,8 +109,8 @@ struct WorkflowSettingsDetailFeature {
 
       case .openWorkflowTapped:
         guard let row = state.row else { return .none }
-        openURLClient.open(row.url.appending(path: "workflow.yaml"))
-        return .none
+        let url = row.url.appending(path: "workflow.yaml")
+        return .run { @MainActor _ in openURLClient.open(url) }
 
       case .revealInFinderTapped:
         guard let row = state.row else { return .none }

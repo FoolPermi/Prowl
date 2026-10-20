@@ -48,12 +48,26 @@ final class CodexForwardingRecordStore {
     )
   }
 
-  isolated deinit {
-    if sessionLockDescriptor >= 0 {
-      flock(sessionLockDescriptor, LOCK_UN)
-      Darwin.close(sessionLockDescriptor)
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036).
+  // A deinit has exclusive access to its own stored properties, and these calls are
+  // non-isolated.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      if sessionLockDescriptor >= 0 {
+        flock(sessionLockDescriptor, LOCK_UN)
+        Darwin.close(sessionLockDescriptor)
+      }
     }
-  }
+  #else
+    deinit {
+      if sessionLockDescriptor >= 0 {
+        flock(sessionLockDescriptor, LOCK_UN)
+        Darwin.close(sessionLockDescriptor)
+      }
+    }
+  #endif
 
   func create(argv: [String]) throws -> CodexForwardingRecord {
     guard !argv.isEmpty, !argv[0].isEmpty, argv.count <= 128,

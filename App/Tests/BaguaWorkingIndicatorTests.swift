@@ -3,6 +3,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct BaguaWorkingIndicatorTests {
   @Test func framesUseFullTrigramSequence() {
     #expect(BaguaWorkingIndicator.frames == ["☰", "☱", "☲", "☳", "☴", "☵", "☶", "☷"])

@@ -78,7 +78,10 @@ final class ListCommandHandler: CommandHandler {
     await handle(envelope: envelope, context: CLICommandContext())
   }
 
-  // swiftlint:disable:next async_without_await
+  // Explicitly isolated: the `@MainActor` providers below then need no hop, on either toolchain.
+  // Kept `async` to match `CommandHandler`'s calling shape (callers already `await` it).
+  // swiftlint:disable async_without_await
+  @MainActor
   func handle(envelope: CommandEnvelope, context: CLICommandContext) async -> CommandResponse {
     do {
       let snapshot = try snapshotProvider()
@@ -104,6 +107,7 @@ final class ListCommandHandler: CommandHandler {
       )
     }
   }
+  // swiftlint:enable async_without_await
 
   private func makePayload(
     from snapshot: ListRuntimeSnapshot,

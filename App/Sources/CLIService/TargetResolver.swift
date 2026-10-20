@@ -138,8 +138,14 @@ final class TargetResolver {
     _ value: String,
     _ snapshot: TargetResolutionSnapshot
   ) -> Result<ResolvedTarget, TargetResolverError> {
+    // macOS 15 renders directory URL paths with a trailing slash; treat "/a/b" and "/a/b/" as
+    // the same selector.
+    let selector = PathPolicy.trimmingTrailingSlash(value)
     let matches = snapshot.worktrees.filter { worktree in
-      worktree.id == value || worktree.name == value || worktree.path == value
+      worktree.id == value
+        || worktree.name == value
+        || PathPolicy.trimmingTrailingSlash(worktree.id) == selector
+        || PathPolicy.trimmingTrailingSlash(worktree.path) == selector
     }
     guard !matches.isEmpty else {
       return .failure(.notFound("Worktree '\(value)' not found."))

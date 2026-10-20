@@ -320,6 +320,7 @@ private struct ShelfSwipeEventMonitor: NSViewRepresentable {
     coordinator.removeMonitor()
   }
 
+  @MainActor
   final class Coordinator {
     weak var view: NSView?
     var isEnabled = false
@@ -336,7 +337,13 @@ private struct ShelfSwipeEventMonitor: NSViewRepresentable {
     func installIfNeeded() {
       guard monitor == nil else { return }
       monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-        self?.handle(event) ?? event
+        // `NSEvent` is not Sendable, so the result stays in a local instead of the closure's
+        // return value; AppKit delivers this monitor on the main thread.
+        var forwarded: NSEvent? = event
+        MainActor.assumeIsolated {
+          forwarded = self?.handle(event) ?? event
+        }
+        return forwarded
       }
     }
 

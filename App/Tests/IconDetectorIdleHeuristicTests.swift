@@ -6,6 +6,7 @@ import Testing
 /// (`isLikelyIdleTitleByShape`). The bootstrap filter that runs
 /// before the per-surface learner has memorised the prompt at least
 /// once.
+@MainActor
 struct IconDetectorIdleHeuristicTests {
   // MARK: - Idle prompt shapes
 

@@ -6,6 +6,7 @@ import ProwlCLIShared
 
 /// Each CLI command has a corresponding handler that executes
 /// within the app's process context.
+@MainActor
 protocol CommandHandler {
   /// Execute the command and return a structured response.
   func handle(envelope: CommandEnvelope) async -> CommandResponse

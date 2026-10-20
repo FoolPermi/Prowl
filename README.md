@@ -10,6 +10,12 @@
 </p>
 
 <p align="center">
+  <b>Personal fork of <a href="https://github.com/onevcat/Prowl">onevcat/Prowl</a></b> — adds
+  macOS 15 support, for my own daily use. All credit for Prowl goes to
+  <a href="https://github.com/onevcat">onevcat</a>; see <a href="#about-this-fork">About this fork</a>.
+</p>
+
+<p align="center">
   <a href="https://github.com/onevcat/Prowl/releases/latest/download/Prowl.dmg"><b>Download</b></a>
   ·
   <a href="https://www.youtube.com/watch?v=4GYlXPttwi0">Watch Demo</a>
@@ -224,18 +230,49 @@ Then add a repository with `⌘⇧O`, press `⌘N` to create a worktree, and lau
 
 ## Requirements
 
-macOS 26.0+
+macOS 15.0+
+
+Liquid Glass surfaces, the shared toolbar background, and the on-device branch-name model need macOS 26; earlier systems get material fallbacks and random branch names.
+
+---
+
+## About this fork
+
+This repository is [FoolPermi](https://github.com/FoolPermi)'s **personal fork of
+[onevcat/Prowl](https://github.com/onevcat/Prowl)**. It exists for one reason: I run macOS 15 and
+the upstream app requires macOS 26.
+
+- **macOS 15 support.** The deployment target is 15.0. Liquid Glass, the shared toolbar background
+  and the macOS 26 toolbar APIs fall back to materials and native per-item toolbar rendering, and
+  branch-name suggestions fall back to random names when the on-device model is unavailable. Built
+  with a macOS 26 SDK, the app still keeps both features on macOS 26 — one source tree, one binary.
+- **Not a product.** This is maintained for my own daily use, without support promises; releases
+  here are notarized but are not official Prowl releases.
+- **Upstream stays upstream.** Bug reports and feature requests for Prowl itself belong in
+  [onevcat/Prowl](https://github.com/onevcat/Prowl), and the prebuilt downloads linked above come
+  from there. Fork-only changes live in `docs-ai/083-macos-15-support/`.
+
+感谢 [onevcat](https://github.com/onevcat) 做出并开源 Prowl，也感谢
+[Ghostty](https://github.com/ghostty-org/ghostty)、[The Composable
+Architecture](https://github.com/pointfreeco/swift-composable-architecture) 等上游项目。Thank you
+to [onevcat](https://github.com/onevcat) for building Prowl and keeping it open source, and to the
+upstream projects it is built on.
 
 ---
 
 ## For Developers
 
-A personal fork of [Supacode](https://github.com/supabitapp/supacode), built on [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [libghostty](https://github.com/ghostty-org/ghostty), maintained for daily use. Requires [mise](https://mise.jdx.dev/) for dev tooling.
+The fork keeps upstream's developer setup. It is a descendant of
+[Supacode](https://github.com/supabitapp/supacode), built on The Composable Architecture and
+[libghostty](https://github.com/ghostty-org/ghostty). Requires [mise](https://mise.jdx.dev/) for dev
+tooling and Xcode 16.4 or later; Liquid Glass and the on-device branch-name model additionally need
+Xcode 26 and macOS 26. Dependencies are pinned to exact versions so the project still builds with
+Swift 6.1 — see `docs-ai/083-macos-15-support/000-plan.md`.
 
 ### First build from a fresh clone
 
 ```bash
-git clone --recurse-submodules https://github.com/onevcat/Prowl.git
+git clone --recurse-submodules https://github.com/FoolPermi/Prowl.git
 cd Prowl
 make build-app
 ```

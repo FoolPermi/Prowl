@@ -20,7 +20,7 @@ struct CanvasLayoutStoreTests {
 
           CanvasLayoutStoreTestLocal.$marker.withValue(1) {
             var store: CanvasLayoutStore? = CanvasLayoutStore(defaults: defaults)
-            weak let releasedStore = store
+            weak var releasedStore = store
             store?.setCardLayouts(layouts)
             store = nil
 

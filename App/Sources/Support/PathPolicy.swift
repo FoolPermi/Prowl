@@ -20,8 +20,18 @@ nonisolated enum PathPolicy {
       url = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: expanded, directoryHint: .inferFromPath)
     }
-    return normalizeURL(url, resolvingSymlinks: resolvingSymlinks)
-      .path(percentEncoded: false)
+    return trimmingTrailingSlash(
+      normalizeURL(url, resolvingSymlinks: resolvingSymlinks).path(percentEncoded: false))
+  }
+
+  /// A path string without the trailing slash Foundation appends to an existing directory on
+  /// macOS 15 (it does not on macOS 26), so one directory always renders as the same string:
+  /// before and after it exists, and before and after it moves away.
+  ///
+  /// Every path-derived identifier and every path comparison goes through this.
+  static func trimmingTrailingSlash(_ path: String) -> String {
+    guard path.count > 1, path.hasSuffix("/") else { return path }
+    return String(path.dropLast())
   }
 
   static func normalizeURL(

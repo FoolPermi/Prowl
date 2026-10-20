@@ -97,5 +97,5 @@ its keyboard shortcuts, detailed behavior, settings, and gotchas.
   Settings → Shortcuts, so a human's actual keys may differ — when in doubt,
   the [Command Palette](components/command-palette.md) shows the live binding
   next to each action, and the `prowl` CLI never depends on keybindings.
-- Requirements: **macOS 26.0+**.
+- Requirements: **macOS 15.0+**. Liquid Glass and the on-device branch-name model need macOS 26.
 - Website: <https://prowl.onev.cat> · Source: <https://github.com/onevcat/Prowl>

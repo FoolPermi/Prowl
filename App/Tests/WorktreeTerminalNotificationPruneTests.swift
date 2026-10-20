@@ -3,6 +3,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct WorktreeTerminalNotificationPruneTests {
   private func notification(surface: UUID, title: String, isRead: Bool) -> WorktreeTerminalNotification {
     WorktreeTerminalNotification(surfaceId: surface, title: title, body: "", isRead: isRead)

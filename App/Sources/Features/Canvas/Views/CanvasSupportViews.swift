@@ -93,14 +93,33 @@ class CanvasScrollCoordinator {
     offset.wrappedValue = newOffset
     lastOffset.wrappedValue = newOffset
   }
+
+  // Avoid the inferred MainActor-isolated deinit: released from SwiftUI's observation
+  // tracking, it hits the old runtime's TaskLocal invalid-free bug (swiftlang/swift#85204,
+  // #88036). There is no actor-bound cleanup; see the same workaround in CanvasLayoutStore.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
 }
 
 private final class CanvasViewportAnimationTimerBox {
   nonisolated(unsafe) var timer: Timer?
 
-  deinit {
-    timer?.invalidate()
-  }
+  // A non-isolated deinit keeps teardown off the back-deployed `swift_task_deinitOnExecutor`
+  // that an isolated deinit uses on macOS 15 and that corrupts task-local storage when the
+  // release runs inside a task-local scope (swiftlang/swift#85204, #88036). `timer` is
+  // `nonisolated(unsafe)` and invalidating it is a non-isolated call.
+  #if compiler(>=6.2)
+    nonisolated deinit {
+      timer?.invalidate()
+    }
+  #else
+    deinit {
+      timer?.invalidate()
+    }
+  #endif
 }
 
 @MainActor
@@ -175,6 +194,15 @@ final class CanvasViewportAnimator {
   private func lerp(_ start: CGFloat, _ end: CGFloat, _ fraction: CGFloat) -> CGFloat {
     start + (end - start) * fraction
   }
+
+  // Avoid the inferred MainActor-isolated deinit: released from SwiftUI's observation
+  // tracking, it hits the old runtime's TaskLocal invalid-free bug (swiftlang/swift#85204,
+  // #88036). Nothing here needs actor-bound cleanup; the timer box invalidates itself.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
 }
 
 /// Pure zoom math, extracted for testability.
@@ -601,6 +629,15 @@ class CanvasScrollContainerView: NSView {
     tearDownMiddleButtonMonitor()
     super.removeFromSuperview()
   }
+
+  // Avoid the inferred MainActor-isolated deinit: released from SwiftUI's observation
+  // tracking, it hits the old runtime's TaskLocal invalid-free bug (swiftlang/swift#85204,
+  // #88036). Monitors are torn down in `removeFromSuperview`.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
 }
 
 /// Screen-space transform for a card on canvas.
@@ -620,13 +657,15 @@ struct CardScreenGeometry {
 /// per-modifier interpolation, which only reached the Animatable terminal and
 /// left offset/scale to snap (the "grows from the center" / "no animation" bugs).
 struct AnimatedExpandableCard<Content: View>: View, Animatable {
-  var progress: CGFloat
+  /// `Animatable.animatableData` is not actor-isolated, so the animated value is the one
+  /// piece of state this view exposes outside the main actor; SwiftUI only writes it on main.
+  nonisolated(unsafe) var progress: CGFloat
   var collapsed: CardScreenGeometry
   var expanded: CardScreenGeometry
   let titleBarHeight: CGFloat
   @ViewBuilder let content: (CGSize) -> Content
 
-  var animatableData: CGFloat {
+  nonisolated var animatableData: CGFloat {
     get { progress }
     set { progress = newValue }
   }

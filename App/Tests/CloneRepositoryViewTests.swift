@@ -3,6 +3,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct CloneRepositoryViewTests {
   @Test func cloneRequestTrimsURLAndNormalizesDestinationPath() {
     let request = CloneRepositoryView.cloneRequest(

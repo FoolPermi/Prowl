@@ -155,7 +155,7 @@ struct WorkflowRunsFeature {
           state.pendingStarts[requestID] = runID
         }
         // The queue exists before the first batch is enqueued below; the executor drains it.
-        let batches = queue.start(runID)
+        let batches = MainActor.assumeIsolated { queue.start(runID) }
         return .merge(
           executor(runID: runID, batches: batches),
           perform(effects, runID: runID, session: session),
@@ -176,7 +176,7 @@ struct WorkflowRunsFeature {
         }
         let timestamp = now
         let generator = uuid
-        session.run.observations = runtime.observe(session.run)
+        session.run.observations = MainActor.assumeIsolated { runtime.observe(session.run) }
         session.run.captureParticipantSessions()
         var machine = session.machine(now: { timestamp }, makeToken: { generator().uuidString })
         let effects = machine.apply(event)
@@ -208,7 +208,7 @@ struct WorkflowRunsFeature {
         }
         let timestamp = now
         let generator = uuid
-        session.run.observations = runtime.observe(session.run)
+        session.run.observations = MainActor.assumeIsolated { runtime.observe(session.run) }
         session.run.captureParticipantSessions()
         var machine = session.machine(now: { timestamp }, makeToken: { generator().uuidString })
         let (result, effects) = machine.deliver(
@@ -237,7 +237,7 @@ struct WorkflowRunsFeature {
         }
         let timestamp = now
         let generator = uuid
-        session.run.observations = runtime.observe(session.run)
+        session.run.observations = MainActor.assumeIsolated { runtime.observe(session.run) }
         session.run.captureParticipantSessions()
         var machine = session.machine(now: { timestamp }, makeToken: { generator().uuidString })
         let effects = machine.apply(.user(userAction))
@@ -369,7 +369,7 @@ struct WorkflowRunsFeature {
       return open.contains(before.state) && (after.state == .revoked || after.state == .skipped)
     }
     if current.status.isTerminal || revokedInFlight || revokedActivation {
-      queue.fence(runID)
+      MainActor.assumeIsolated { queue.fence(runID) }
     }
   }
 
@@ -583,7 +583,7 @@ struct WorkflowRunsFeature {
     }
     if !ordered.isEmpty {
       // Enqueued synchronously while reducing so batches keep the machine's order.
-      queue.enqueue(runID, WorkflowEffectBatch(session: session, effects: ordered))
+      MainActor.assumeIsolated { queue.enqueue(runID, WorkflowEffectBatch(session: session, effects: ordered)) }
     }
     return .merge(observers)
   }
@@ -597,8 +597,8 @@ struct WorkflowRunsFeature {
     let sourcePane = run.context.sourcePaneID ?? run.bindings.values.first { $0.source == .current }?.pane?.surfaceID
     let sourceContext =
       actionID == "builtin:save-handoff"
-      ? sourcePane.flatMap {
-        terminal.handoffSessionContextForSurface(session.worktree.id, $0)
+      ? sourcePane.flatMap { paneID in
+        MainActor.assumeIsolated { terminal.handoffSessionContextForSurface(session.worktree.id, paneID) }
       } : nil
     let context = WorkflowActionContext(
       runID: run.id, rootURL: run.context.worktree.rootURL,
@@ -676,7 +676,10 @@ struct WorkflowRunsFeature {
     case stop
   }
 
-  // swiftlint:disable:next cyclomatic_complexity function_body_length
+  // swiftlint:disable cyclomatic_complexity function_body_length
+  /// Runs on the main actor: every boundary it touches (queue, runtime, activation, terminal) is
+  /// main-actor bound, and the machine's ordering assumes one thread at a time.
+  @MainActor
   private func perform(
     _ effect: WorkflowRunEffect,
     runID: UUID,
@@ -863,6 +866,7 @@ struct WorkflowRunsFeature {
     }
     return .continue
   }
+  // swiftlint:enable cyclomatic_complexity function_body_length
 
   private func appendLog(_ line: String, store: WorkflowRunStore, runID: UUID) {
     do {

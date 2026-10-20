@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 import GhosttyKit
 
-extension GhosttySurfaceView: NSTextInputClient {
+extension GhosttySurfaceView: @preconcurrency NSTextInputClient {
   func hasMarkedText() -> Bool {
     markedText.length > 0
   }

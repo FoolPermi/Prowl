@@ -350,7 +350,7 @@ private struct CanvasToolbarPreview: View {
       Text("Canvas Content")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Canvas")
-        .toolbar(removing: .title)
+        .prowlRemovingToolbarTitle()
         .toolbar {
           WorktreeDetailView.AgentNotificationsToolbarContent(
             onHistoryIntent: { _ in },

@@ -93,6 +93,9 @@ private struct ExternalDiffGUICommandRequest {
   let arguments: [String]
 }
 
+// Explicitly main-actor isolated so the `onError` calls below need no actor hop under either
+// toolchain: Swift 6.1 has no default isolation, Swift 6.2 infers it for this file.
+@MainActor
 private func runGUICommand(
   _ request: ExternalDiffGUICommandRequest,
   target: DiffTarget,
@@ -116,6 +119,7 @@ private func runGUICommand(
   }
 }
 
+@MainActor
 private func runCustomCommand(
   settings: ExternalDiffSettings,
   target: DiffTarget,

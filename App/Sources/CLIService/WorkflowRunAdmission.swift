@@ -216,7 +216,7 @@ enum WorkflowRunAdmission {
       definitionPath: entry.file.url.path(percentEncoded: false),
       worktree: WorkflowRunWorktree(
         id: worktree.id, name: worktree.name, branch: environment.branchName(worktree),
-        path: worktree.workingDirectory.path(percentEncoded: false)),
+        path: GitClient.canonicalWorktreePath(worktree.workingDirectory.path(percentEncoded: false))),
       sourceSessionIdentity: source.paneID.flatMap { environment.detectedAgent($0)?.sessionIdentity })
     context.sourcePaneID = source.paneID
     context.sourceTabID = source.worktree.tabs.first { tab in tab.panes.contains { $0.id == source.paneID } }?.id
@@ -391,6 +391,7 @@ enum WorkflowRunAdmission {
   // MARK: - Bindings
 
   /// Freezes one binding per role, in declaration order, so the first failure names the first role.
+  @MainActor
   private struct RoleBinder {
     let definition: WorkflowDefinition
     let source: WorkflowRunSource

@@ -115,7 +115,7 @@ struct MirrorHostTests {
       silent.append(connection)
       connection.start(queue: .main)
     }
-    for await full in Observations({
+    for await full in ObservationsCompat({
       host.pendingHandshakeCount == MirrorHost.maximumPendingHandshakes
     }) where full {
       break
@@ -347,7 +347,7 @@ struct MirrorHostTests {
     _ = await preparationEvents.next()
     if mode.hasPrefix("disconnect") {
       peer.connection.close()
-      for await offline in Observations({ host.onlineDeviceIDs.isEmpty }) where offline { break }
+      for await offline in ObservationsCompat({ host.onlineDeviceIDs.isEmpty }) where offline { break }
     }
     if mode.hasSuffix("revoke") { host.revoke(Self.identity.devices[0].id) }
     if mode.hasSuffix("revoke-all") { host.revokeAllDevices() }
@@ -440,7 +440,7 @@ struct MirrorHostTests {
       #expect(await nextMessages.next()?.kind == .subscribed)
     case "disconnect":
       peer.connection.close()
-      for await offline in Observations({ host.onlineDeviceIDs.isEmpty }) where offline { break }
+      for await offline in ObservationsCompat({ host.onlineDeviceIDs.isEmpty }) where offline { break }
     case "host-disconnect": host.disconnect(subscriptionID: lease)
     case "revoke": host.revoke(Self.identity.devices[0].id)
     default: host.stop()

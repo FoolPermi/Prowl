@@ -196,8 +196,13 @@ func shouldConfirmInstallAndRelaunchImmediately(for stage: SPUUserUpdateStage) -
   stage == .installing
 }
 
+/// Sparkle asks this from the user driver on the main thread; the alert itself is main-actor only.
+private nonisolated func confirmInstallAndRelaunchChoice() -> SPUUserUpdateChoice {
+  MainActor.assumeIsolated { installAndRelaunchChoiceAlert() }
+}
+
 @MainActor
-private func confirmInstallAndRelaunchChoice() -> SPUUserUpdateChoice {
+private func installAndRelaunchChoiceAlert() -> SPUUserUpdateChoice {
   let alert = NSAlert()
   alert.messageText = String(localized: "Install Update and Relaunch?")
   alert.informativeText = String(
@@ -209,7 +214,23 @@ private func confirmInstallAndRelaunchChoice() -> SPUUserUpdateChoice {
 }
 
 extension UpdaterClient: DependencyKey {
-  static let liveValue: UpdaterClient = {
+  static var liveValue: UpdaterClient {
+    // The Sparkle driver and delegate are main-actor objects, while reduction or effects may
+    // resolve this dependency off the main actor during launch. The value is built once: a second
+    // `SPUUpdater` would own a different user driver, so the events stream and the configured
+    // updater would no longer belong together.
+    if Thread.isMainThread {
+      return MainActor.assumeIsolated { shared }
+    }
+    return DispatchQueue.main.sync { MainActor.assumeIsolated { shared } }
+  }
+
+  /// The one Sparkle updater this process runs, built on first use.
+  @MainActor private static let shared = makeLiveValue()
+
+  /// The Sparkle driver and delegate are main-actor objects; the dependency is built on main.
+  @MainActor
+  private static func makeLiveValue() -> UpdaterClient {
     let hostBundle = Bundle.main
     let delegate = SparkleUpdateDelegate()
     let driver = SilentUpdateDriver(hostBundle: hostBundle)
@@ -246,7 +267,7 @@ extension UpdaterClient: DependencyKey {
         return stream
       }
     )
-  }()
+  }
 
   static let testValue = UpdaterClient(
     configure: { _, _ in },

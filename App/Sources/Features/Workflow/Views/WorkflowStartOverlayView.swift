@@ -83,7 +83,7 @@ private struct WorkflowStartCard: View {
       footer
     }
     .frame(maxWidth: 580)
-    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
+    .prowlGlass(RoundedRectangle(cornerRadius: 14))
     .shadow(radius: 32, x: 0, y: 12)
     .padding(16)
     .background {

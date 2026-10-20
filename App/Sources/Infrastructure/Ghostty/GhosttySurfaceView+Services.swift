@@ -1,7 +1,7 @@
 import AppKit
 import GhosttyKit
 
-extension GhosttySurfaceView: NSServicesMenuRequestor {
+extension GhosttySurfaceView: @preconcurrency NSServicesMenuRequestor {
   override func validRequestor(
     forSendType sendType: NSPasteboard.PasteboardType?,
     returnType: NSPasteboard.PasteboardType?

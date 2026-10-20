@@ -777,19 +777,18 @@ struct RepositoriesFeatureTests {
     )
     .write(to: ProjectWorkspace.metadataURL(for: rootURL))
 
-    let rootPath = rootURL.path(percentEncoded: false)
+    let rootPath = canonicalTestPath(rootURL)
     let loadedRootURL = URL(fileURLWithPath: rootPath).standardizedFileURL
     let workspace = try #require(ProjectWorkspace.load(from: loadedRootURL))
     let repository = makeRepository(
-      id: loadedRootURL.path(percentEncoded: false),
+      id: canonicalTestPath(loadedRootURL),
       name: "Multi Repo Workspace",
       kind: .plain,
       worktrees: [],
       workspace: workspace
     )
 
-    let childID = repository.rootURL.appending(path: "app").standardizedFileURL.path(
-      percentEncoded: false)
+    let childID = canonicalTestPath(repository.rootURL.appending(path: "app"))
     let store = TestStore(initialState: RepositoriesFeature.State()) {
       RepositoriesFeature()
     } withDependencies: {
@@ -1414,8 +1413,8 @@ struct RepositoriesFeatureTests {
     try FileManager.default.createDirectory(at: realRoot, withIntermediateDirectories: true)
     try FileManager.default.createSymbolicLink(at: symlinkRoot, withDestinationURL: realRoot)
 
-    let realPath = realRoot.standardizedFileURL.path(percentEncoded: false)
-    let symlinkPath = symlinkRoot.standardizedFileURL.path(percentEncoded: false)
+    let realPath = canonicalTestPath(realRoot)
+    let symlinkPath = canonicalTestPath(symlinkRoot)
     let worktree = makeWorktree(id: realPath, name: "main", repoRoot: realPath)
     let repository = makeRepository(id: realPath, name: "real", kind: .git, worktrees: [worktree])
     let savedEntries = LockIsolated<[[PersistedRepositoryEntry]]>([])
@@ -1431,11 +1430,11 @@ struct RepositoriesFeatureTests {
       }
       $0.repositoryPersistence.saveRepositorySnapshot = { _ in }
       $0.gitClient.repoRoot = { url in
-        #expect(url.standardizedFileURL.path(percentEncoded: false) == symlinkPath)
+        #expect(canonicalTestPath(url) == symlinkPath)
         return realRoot
       }
       $0.gitClient.worktrees = { url in
-        #expect(url.standardizedFileURL.path(percentEncoded: false) == realPath)
+        #expect(canonicalTestPath(url) == realPath)
         return [worktree]
       }
       $0.gitClient.repositoryWebURL = { _ in nil }
@@ -7724,6 +7723,13 @@ struct RepositoriesFeatureTests {
       worktrees: IdentifiedArray(uniqueElements: worktrees),
       workspace: workspace
     )
+  }
+
+  /// A fixture directory's path string, without the trailing slash macOS 15's Foundation adds to an
+  /// existing directory. `Repository.ID`, `Worktree.ID`, and persisted entries are all canonical
+  /// (see `PathPolicy`), so fixtures must spell the path the same way.
+  private nonisolated func canonicalTestPath(_ url: URL) -> String {
+    PathPolicy.trimmingTrailingSlash(url.standardizedFileURL.path(percentEncoded: false))
   }
 
   private func makeState(repositories: [Repository]) -> RepositoriesFeature.State {

@@ -2,6 +2,7 @@ import Testing
 
 @testable import Prowl
 
+@MainActor
 struct GhosttySurfaceProgressBarTests {
   @Test func zeroPassesThrough() {
     #expect(GhosttySurfaceProgressBar.bucketedPercent(0) == 0)
@@ -22,7 +23,7 @@ struct GhosttySurfaceProgressBarTests {
   }
 
   @Test func collapsesASweepToAtMostTwentyOneDistinctValues() {
-    let distinct = Set((0...100).map(GhosttySurfaceProgressBar.bucketedPercent))
+    let distinct = Set((0...100).map { GhosttySurfaceProgressBar.bucketedPercent($0) })
     // 0, 5, 10, ..., 95, 100 -> 21 buckets.
     #expect(distinct.count == 21)
   }

@@ -168,6 +168,7 @@ struct CanvasViewedSurfaceTests {
     #expect(fixture.state.surfaceAgentStates[fixture.surface.id]?.displayState == .blocked)
   }
 
+  @MainActor
   private struct Fixture {
     let state: WorktreeTerminalState
     let surface: GhosttySurfaceView
