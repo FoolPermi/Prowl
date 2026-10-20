@@ -93,6 +93,9 @@ private struct ExternalDiffGUICommandRequest {
   let arguments: [String]
 }
 
+// Explicitly main-actor isolated so the `onError` calls below need no actor hop under either
+// toolchain: Swift 6.1 has no default isolation, Swift 6.2 infers it for this file.
+@MainActor
 private func runGUICommand(
   _ request: ExternalDiffGUICommandRequest,
   target: DiffTarget,
@@ -112,10 +115,11 @@ private func runGUICommand(
       target.workingDirectory
     )
   } catch {
-    await onError(openError(for: request.tool, error: error))
+    onError(openError(for: request.tool, error: error))
   }
 }
 
+@MainActor
 private func runCustomCommand(
   settings: ExternalDiffSettings,
   target: DiffTarget,
@@ -125,7 +129,7 @@ private func runCustomCommand(
 ) async {
   let template = settings.customCommand.trimmingCharacters(in: .whitespacesAndNewlines)
   guard !template.isEmpty else {
-    await onError(
+    onError(
       OpenActionError(
         title: String(localized: "Custom diff command is empty"),
         message: String(localized: "Add a custom diff command in Settings before opening the diff.")
@@ -149,7 +153,7 @@ private func runCustomCommand(
       target.workingDirectory
     )
   } catch {
-    await onError(openError(for: settings.tool, error: error))
+    onError(openError(for: settings.tool, error: error))
   }
 }
 

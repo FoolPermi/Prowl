@@ -78,10 +78,14 @@ final class ListCommandHandler: CommandHandler {
     await handle(envelope: envelope, context: CLICommandContext())
   }
 
+  // Explicitly isolated: the `@MainActor` providers below then need no hop, on either toolchain.
+  // Kept `async` to match `CommandHandler`'s calling shape (callers already `await` it).
+  // swiftlint:disable async_without_await
+  @MainActor
   func handle(envelope: CommandEnvelope, context: CLICommandContext) async -> CommandResponse {
     do {
-      let snapshot = try await snapshotProvider()
-      let caller = await resolveCaller(context).map {
+      let snapshot = try snapshotProvider()
+      let caller = resolveCaller(context).map {
         ListCommandCaller(paneID: $0.surfaceID.uuidString, worktreeID: $0.worktreeID)
       }
       let payload = makePayload(from: snapshot, includeHandles: envelope.output == .text, caller: caller)
@@ -103,6 +107,7 @@ final class ListCommandHandler: CommandHandler {
       )
     }
   }
+  // swiftlint:enable async_without_await
 
   private func makePayload(
     from snapshot: ListRuntimeSnapshot,
