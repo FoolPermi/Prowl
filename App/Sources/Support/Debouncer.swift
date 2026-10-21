@@ -70,6 +70,20 @@ final class KeyedDebouncer<Key: Hashable & Sendable> {
     self.clock = clock
   }
 
+  // `KeyedDebouncer` is generic, so its deinit is synthesized — and under `-default-isolation MainActor`
+  // that synthesized deinit is isolated, which is the one shape the 083 sweep could not see: it looked
+  // for explicit `deinit`s, and this class has none. An isolated deinit also runs through the
+  // back-deployed `swift_task_deinitOnExecutor` on macOS 15 (docs-ai 083), and Swift 6.2.4's optimizer
+  // crashes outright on it in a Release build (EarlyPerfInliner, `KeyedDebouncerCfD`,
+  // swiftlang/swift#88173). An explicit non-isolated deinit keeps teardown off that path; its empty body
+  // changes nothing else, because the synthesized deinit only released the stored properties. The pending
+  // tasks hold `self` strongly, so none of them can still be running here.
+  #if compiler(>=6.2)
+    nonisolated deinit {}
+  #else
+    deinit {}
+  #endif
+
   /// Schedules `action` for `key` after `interval` (defaulting to the instance
   /// interval), replacing any action already pending for the same key.
   func schedule(_ key: Key, after interval: Duration? = nil, _ action: @escaping @MainActor () async -> Void) {

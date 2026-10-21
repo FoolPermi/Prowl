@@ -10,6 +10,7 @@
 | 2026-10-19 | Review round: `make format-changed` actually formats every changed file, the macOS 15 drag-end fallback runs on a runtime availability check, one Sparkle updater per process, path-derived ids canonicalized through `PathPolicy` | this commit |
 | 2026-10-20 | Crash fix: every isolated deinit replaced with a non-isolated one, so teardown never runs through the back-deployed `swift_task_deinitOnExecutor` on macOS 15 | this commit |
 | 2026-10-21 | Path-key sweep: `PathPolicy.identifier(for:)` now derives every repository, worktree and open-path key. Twelve call sites still compared a bare `standardizedFileURL.path(…)`, which carries a trailing slash on macOS 15 but not on macOS 26, so the same directory produced two different ids | this commit |
+| 2026-10-21 | Crash fix, the sweep's blind spot: a generic class has a *synthesized* isolated deinit, which no `deinit` grep can see. `KeyedDebouncer` gets an explicit `nonisolated deinit {}` — without it Swift 6.2.4's `EarlyPerfInliner` segfaults on `-O` (swiftlang/swift#88173), so no Release build was possible | this commit |
 
 ## Outcome & current state (as of 2026-10-19)
 
