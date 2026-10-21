@@ -91,7 +91,7 @@ TEST_SIGNING_ARGS := CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: build-ghostty-xcframework ensure-ghostty sync-ghostty _record-ghostty-hash generate ensure-project ensure-mirror-ios-project build-app build-cli build-cli-release embed-cli-debug embed-cli embed-docs embed-skills run-app install-dev-build install-release archive export-archive format format-changed format-lint lint check test test-all test-app test-mirror-ios test-mirror-ios-unit test-mirror-android test-scripts test-cli-smoke test-cli-unit test-cli-integration benchmark-build bump-version log-stream agent-versions
+.PHONY: build-ghostty-xcframework ensure-ghostty sync-ghostty _record-ghostty-hash generate ensure-project ensure-mirror-ios-project build-app build-cli build-cli-release embed-cli-debug embed-cli embed-docs embed-skills run-app install-dev-build install-release install-release-local archive export-archive format format-changed format-lint lint check test test-all test-app test-mirror-ios test-mirror-ios-unit test-mirror-android test-scripts test-cli-smoke test-cli-unit test-cli-integration benchmark-build bump-version log-stream agent-versions
 .PHONY: test-agent-contracts _test-agent-contract-codex _test-agent-contract-export
 
 help:  # Display this help.
@@ -322,6 +322,63 @@ install-dev-build: build-app # Build Debug and install to /Applications
 	fi; \
 	ditto "$$src" "$$dst"; \
 	echo "installed $$dst"
+
+# Release build for this machine only, for people without a Developer ID identity (a fork checkout used
+# daily by its owner). It builds the real Release configuration, then ad-hoc signs it and installs it.
+# An ad-hoc signature cannot satisfy hardened runtime's library validation: the app and its embedded
+# frameworks would share no Team ID, so dyld refuses to load Sparkle.framework and the app aborts at
+# launch. The release entitlements deliberately carry no `disable-library-validation` (that is a
+# Debug-only exemption), so the local signature drops the runtime flag instead — packaging is the only
+# difference from `install-release`, the binary is the same Release build. Never publish this DMG:
+# fork releases must be notarized.
+install-release-local: build-ghostty-xcframework embed-cli embed-docs embed-skills ensure-project # Build Release without a Developer ID, ad-hoc sign, install to /Applications and pack a DMG
+	bash -o pipefail -c 'xcodebuild -workspace "$(XCODE_WORKSPACE)" -scheme $(APP_SCHEME) -configuration Release build -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO PROWL_SENTRY_DSN="$(PROWL_SENTRY_DSN)" PROWL_POSTHOG_API_KEY="$(PROWL_POSTHOG_API_KEY)" PROWL_POSTHOG_HOST="$(PROWL_POSTHOG_HOST)" 2>&1 | mise exec -- xcsift -w --format toon'
+	@set -euo pipefail; \
+	settings="$$(xcodebuild -workspace "$(XCODE_WORKSPACE)" -scheme $(APP_SCHEME) -configuration Release -showBuildSettings -json 2>/dev/null)"; \
+	build_dir="$$(printf '%s' "$$settings" | jq -er '.[0].buildSettings.BUILT_PRODUCTS_DIR')"; \
+	product="$$(printf '%s' "$$settings" | jq -er '.[0].buildSettings.FULL_PRODUCT_NAME')"; \
+	app="$$build_dir/$$product"; \
+	if [ ! -d "$$app" ]; then \
+		echo "error: release product not found: $$app" >&2; \
+		exit 1; \
+	fi; \
+	sparkle="$$app/Contents/Frameworks/Sparkle.framework/Versions/B"; \
+	if [ -d "$$sparkle" ]; then \
+		codesign -f -s - "$$sparkle/XPCServices/Installer.xpc"; \
+		codesign -f -s - --preserve-metadata=entitlements "$$sparkle/XPCServices/Downloader.xpc"; \
+		codesign -f -s - "$$sparkle/Updater.app"; \
+		codesign -f -s - "$$sparkle/Autoupdate"; \
+		codesign -f -s - "$$sparkle/Sparkle"; \
+		codesign -f -s - "$$app/Contents/Frameworks/Sparkle.framework"; \
+	fi; \
+	sentry="$$app/Contents/Frameworks/Sentry.framework"; \
+	if [ -d "$$sentry" ]; then \
+		codesign -f -s - "$$sentry/Versions/A/Sentry"; \
+		codesign -f -s - "$$sentry"; \
+	fi; \
+	codesign -f -s - --preserve-metadata=entitlements "$$app"; \
+	codesign -vvv --deep --strict "$$app"; \
+	version="$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$$app/Contents/Info.plist")"; \
+	mkdir -p build; \
+	stage="$$(mktemp -d)"; \
+	trap 'rm -rf "$$stage"' EXIT; \
+	ditto "$$app" "$$stage/$$product"; \
+	ln -s /Applications "$$stage/Applications"; \
+	dmg="build/Prowl-$$version-local.dmg"; \
+	rm -f "$$dmg"; \
+	hdiutil create -volname "Prowl $$version" -srcfolder "$$stage" -ov -format UDZO "$$dmg" > /dev/null; \
+	echo "packed $$dmg"; \
+	dst="/Applications/$$product"; \
+	if [ -e "$$dst" ]; then \
+		if ! command -v trash >/dev/null 2>&1; then \
+			echo "error: trash command not found; refusing to remove $$dst" >&2; \
+			exit 1; \
+		fi; \
+		echo "moving existing app to Trash: $$dst"; \
+		trash "$$dst"; \
+	fi; \
+	ditto "$$app" "$$dst"; \
+	echo "installed $$dst (Release build, ad-hoc signed, no hardened runtime)"
 
 install-release: build-ghostty-xcframework # Build Release, sign locally, install to /Applications
 	@set -euo pipefail; \

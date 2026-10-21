@@ -34,6 +34,16 @@ nonisolated enum PathPolicy {
     return String(path.dropLast())
   }
 
+  /// The identifier a URL stands for: its standardized path, without the trailing slash Foundation
+  /// appends to an existing directory on macOS 15 (it does not on macOS 26, see
+  /// `trimmingTrailingSlash`). Repositories, worktrees and the snapshots that persist them are all
+  /// keyed by this string, so every derived key has to come from here. A bare
+  /// `url.standardizedFileURL.path(percentEncoded: false)` compares unequal to the same directory's
+  /// id on macOS 15 while matching on macOS 26, which silently empties every path-keyed lookup.
+  static func identifier(for url: URL) -> String {
+    trimmingTrailingSlash(url.standardizedFileURL.path(percentEncoded: false))
+  }
+
   static func normalizeURL(
     _ url: URL,
     resolvingSymlinks: Bool = true

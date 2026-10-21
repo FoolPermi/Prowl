@@ -520,7 +520,7 @@ struct GitClient {
         )
       )
     }
-    let worktreeKey = base.standardizedFileURL.path(percentEncoded: false)
+    let worktreeKey = PathPolicy.identifier(for: base)
     let cacheFiles = files.map {
       UntrackedLineCacheFile(relativePath: $0.relativePath, fingerprint: $0.fingerprint)
     }

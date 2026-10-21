@@ -1272,7 +1272,7 @@ final class WorktreeTerminalState {
   }
 
   private func boundDirectoryKey(for url: URL) -> String {
-    url.standardizedFileURL.path(percentEncoded: false)
+    PathPolicy.identifier(for: url)
   }
 
   // Env vars are injected into the surface's shell process via

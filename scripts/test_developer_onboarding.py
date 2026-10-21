@@ -11,7 +11,7 @@ class DeveloperOnboardingTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text()
 
         self.assertIn(
-            "git clone --recurse-submodules https://github.com/onevcat/Prowl.git",
+            "git clone --recurse-submodules https://github.com/FoolPermi/Prowl.git",
             readme,
         )
         # Check the documented targets, not their descriptions, so copy edits do not break the test.

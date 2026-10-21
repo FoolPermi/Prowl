@@ -1378,25 +1378,22 @@ struct ProwlApp: App {
         worktreePath: nil, rootPath: nil, worktreeKind: nil, resolvedPath: nil
       )
     }
-    let normalized = URL(fileURLWithPath: path, isDirectory: true)
-      .standardizedFileURL.path(percentEncoded: false)
+    let normalized = PathPolicy.identifier(for: URL(fileURLWithPath: path, isDirectory: true))
     // Exact match: worktree working directory or repository root
     for repository in repositories.repositories {
       let kind = repository.kind.rawValue
       for worktree in repository.worktrees {
-        let wtPath = worktree.workingDirectory
-          .standardizedFileURL.path(percentEncoded: false)
+        let wtPath = PathPolicy.identifier(for: worktree.workingDirectory)
         if wtPath == normalized {
           return OpenResolverResult(
             resolution: .exactRoot, worktreeID: worktree.id,
             worktreeName: worktree.name, worktreePath: wtPath,
-            rootPath: repository.rootURL.standardizedFileURL.path(percentEncoded: false),
+            rootPath: PathPolicy.identifier(for: repository.rootURL),
             worktreeKind: kind, resolvedPath: normalized
           )
         }
       }
-      let repoRoot = repository.rootURL
-        .standardizedFileURL.path(percentEncoded: false)
+      let repoRoot = PathPolicy.identifier(for: repository.rootURL)
       if repoRoot == normalized,
         !repository.capabilities.supportsWorktrees,
         repository.capabilities.supportsRunnableFolderActions
@@ -1413,14 +1410,13 @@ struct ProwlApp: App {
     for repository in repositories.repositories {
       let kind = repository.kind.rawValue
       for worktree in repository.worktrees {
-        let wtPath = worktree.workingDirectory
-          .standardizedFileURL.path(percentEncoded: false)
+        let wtPath = PathPolicy.identifier(for: worktree.workingDirectory)
         let wtSlash = wtPath.hasSuffix("/") ? wtPath : wtPath + "/"
         if normalizedSlash.hasPrefix(wtSlash) {
           return OpenResolverResult(
             resolution: .insideRoot, worktreeID: worktree.id,
             worktreeName: worktree.name, worktreePath: wtPath,
-            rootPath: repository.rootURL.standardizedFileURL.path(percentEncoded: false),
+            rootPath: PathPolicy.identifier(for: repository.rootURL),
             worktreeKind: kind, resolvedPath: normalized
           )
         }
@@ -1428,8 +1424,7 @@ struct ProwlApp: App {
       if !repository.capabilities.supportsWorktrees,
         repository.capabilities.supportsRunnableFolderActions
       {
-        let repoRoot = repository.rootURL
-          .standardizedFileURL.path(percentEncoded: false)
+        let repoRoot = PathPolicy.identifier(for: repository.rootURL)
         let repoSlash = repoRoot.hasSuffix("/") ? repoRoot : repoRoot + "/"
         if normalizedSlash.hasPrefix(repoSlash) {
           return OpenResolverResult(

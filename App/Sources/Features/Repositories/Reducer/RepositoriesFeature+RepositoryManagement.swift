@@ -36,7 +36,7 @@ extension RepositoriesFeature {
               )
             )
           } catch {
-            let normalizedPath = url.standardizedFileURL.path(percentEncoded: false)
+            let normalizedPath = PathPolicy.identifier(for: url)
             if normalizedPath.isEmpty {
               invalidRoots.append(url.path(percentEncoded: false))
             } else if Self.isNotGitRepositoryError(error) {
@@ -327,7 +327,7 @@ extension RepositoriesFeature {
       state.loadFailuresByID.removeValue(forKey: repositoryID)
       state.gitUnavailableRepositoryIDs.remove(repositoryID)
       state.repositoryRoots.removeAll {
-        isSameRepositoryPath($0.standardizedFileURL.path(percentEncoded: false), repositoryID)
+        isSameRepositoryPath(PathPolicy.identifier(for: $0), repositoryID)
       }
       let failedIconCleanup = iconDetectionRemovalEffect(
         repositoryID: repositoryID,
