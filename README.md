@@ -290,6 +290,7 @@ make generate                    # Generate Prowl.xcworkspace with Tuist to open
 make run-app                     # Build and launch the Debug app with log streaming
 make install-dev-build           # Build Debug and install to /Applications/Prowl Debug.app
 make install-release             # Build Release, sign locally, install to /Applications
+make install-release-local       # Build Release, ad-hoc sign, install + pack a DMG (no Developer ID)
 ```
 
 ### Develop & test
