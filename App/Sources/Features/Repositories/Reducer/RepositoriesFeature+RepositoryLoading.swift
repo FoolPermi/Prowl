@@ -218,8 +218,10 @@ extension RepositoriesFeature {
     var loaded: [Repository] = []
     var failures: [LoadFailure] = []
     for entry in entries {
-      let normalizedRoot = URL(fileURLWithPath: entry.path).standardizedFileURL
-      let rootID = normalizedRoot.path(percentEncoded: false)
+      // Same key as the fetch results above: `URL.path` carries a trailing slash for an existing
+      // directory on macOS 15, so an untrimmed key misses every entry and silently drops every
+      // repository (the sidebar then renders its empty state).
+      let rootID = PathPolicy.identifier(for: URL(fileURLWithPath: entry.path))
       guard let result = fetchResults[rootID] else { continue }
       if let repository = result.repository {
         loaded.append(repository)

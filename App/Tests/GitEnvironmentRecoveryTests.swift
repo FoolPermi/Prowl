@@ -33,6 +33,41 @@ struct GitEnvironmentRecoveryTests {
     await store.receive(\.delegate.selectedWorktreeChanged)
     await store.finish()
   }
+  /// `loadRepositoriesData` assembles its result by looking each entry's fetch up in a dictionary
+  /// keyed by the entry's path id. Foundation appends "/" to an existing directory's `path` on
+  /// macOS 15, so an untrimmed lookup key missed every entry: the git scans all succeeded and every
+  /// repository was still dropped, leaving the sidebar on its empty state.
+  @Test(.dependencies) func existingDirectoryEntrySurvivesTheFetchResultLookup() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    // The trailing slash is the shape Foundation produces for an existing directory on macOS 15.
+    let entry = PersistedRepositoryEntry(
+      path: root.path(percentEncoded: false) + "/",
+      kind: .git
+    )
+
+    let (repositories, failures) = await withDependencies {
+      $0.gitClient.worktrees = { url in
+        [
+          Worktree(
+            id: url.path(percentEncoded: false),
+            name: "main",
+            detail: "detail",
+            workingDirectory: url,
+            repositoryRootURL: url
+          )
+        ]
+      }
+    } operation: {
+      await RepositoriesFeature().loadRepositoriesData([entry])
+    }
+
+    #expect(repositories.count == 1)
+    #expect(failures.isEmpty)
+    #expect(repositories.first?.id == PathPolicy.identifier(for: root))
+  }
+
   @Test(.dependencies) func unavailableGitKeepsPersistedRepositoryKind() async throws {
     let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
