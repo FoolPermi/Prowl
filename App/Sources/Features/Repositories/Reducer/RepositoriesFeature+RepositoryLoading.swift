@@ -72,7 +72,7 @@ extension RepositoriesFeature {
           }
           do {
             let repoRoot = try await gitClient.repoRoot(URL(fileURLWithPath: normalizedPath))
-            let normalizedRepoRoot = repoRoot.standardizedFileURL.path(percentEncoded: false)
+            let normalizedRepoRoot = PathPolicy.identifier(for: repoRoot)
             if Self.pathsReferToSameFileSystemLocation(normalizedPath, normalizedRepoRoot) {
               return (index, PersistedRepositoryEntry(path: normalizedRepoRoot, kind: .git))
             }
@@ -209,7 +209,7 @@ extension RepositoriesFeature {
 
       var resultsByRootID: [Repository.ID: WorktreesFetchResult] = [:]
       for await result in group {
-        let rootID = URL(fileURLWithPath: result.entry.path).standardizedFileURL.path(percentEncoded: false)
+        let rootID = PathPolicy.identifier(for: URL(fileURLWithPath: result.entry.path))
         resultsByRootID[rootID] = result
       }
       return resultsByRootID

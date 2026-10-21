@@ -165,6 +165,28 @@ struct SidebarPresentationTests {
     )
   }
 
+  /// Foundation appends a trailing slash to an existing directory's `path` on macOS 15, while
+  /// repository ids are trimmed, so the presentation has to normalize the root before it looks the
+  /// repository up. Without it every row falls through and the sidebar renders its empty state.
+  @Test func directoryRootURLWithATrailingSlashStillFindsItsRepository() {
+    let repoRoot = "/tmp/repo"
+    let repository = makeRepository(
+      id: repoRoot,
+      worktrees: [makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)]
+    )
+    var state = makeState(repositories: [repository])
+    state.repositoryRoots = [URL(fileURLWithPath: repoRoot, isDirectory: true)]
+
+    let presentation = state.sidebarPresentation(expandedRepositoryIDs: [repository.id])
+
+    #expect(presentation.repositoryRowItems.count == 1)
+    guard case .repository(let model) = presentation.repositoryRowItems.first else {
+      Issue.record("Expected repository container")
+      return
+    }
+    #expect(model.id == repository.id)
+  }
+
   private func makeWorktree(id: String, name: String, repoRoot: String) -> Worktree {
     Worktree(
       id: id,
