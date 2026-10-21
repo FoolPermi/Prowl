@@ -176,7 +176,7 @@ Reducer ← .terminalEvent(Event) ← AsyncStream<Event>
 - Automatically commit your changes and your changes only. Do not use `git add .`
 - Before you go on your task, check the current git branch name, if it's something generic like an animal name, name it accordingly. Do not do this for main branch
 - After implementing an execplan, always submit a PR if you're not in the main branch
-- PRs target this fork's `master` (`FoolPermi/Prowl`). Upstream `onevcat/Prowl` is a read-only reference: do not open PRs there unless onevcat asks for one.
+- PRs target this fork's `master` (`FoolPermi/Prowl`). Upstream `onevcat/Prowl` is a read-only reference: do not open PRs there unless onevcat asks for one. The checkout also has an `upstream` remote, so `gh` resolves to the upstream repository by default — always pass `--repo FoolPermi/Prowl` to `gh pr`, `gh issue`, and `gh release` (or run `gh repo set-default FoolPermi/Prowl` once per clone) instead of relying on the default.
 - Fork releases must be notarized. Never publish non-notarized releases (`ENABLE_NOTARIZATION=0` is forbidden).
 
 ## Submodules
