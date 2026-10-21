@@ -60,6 +60,16 @@ private struct PersistentPopoverAnchor<PopoverContent: View>: NSViewRepresentabl
       self.isPresented = isPresented
     }
 
+    // Non-isolated teardown, like every other owner in the app (docs-ai 083): an isolated deinit
+    // runs through the back-deployed `swift_task_deinitOnExecutor` on macOS 15. It also keeps the
+    // Swift 6.2.4 optimizer from crashing on the implicit isolated deinit in a Release build
+    // (EarlyPerfInliner, `CoordinatorCfD`). Nothing here needs actor-bound cleanup.
+    #if compiler(>=6.2)
+      nonisolated deinit {}
+    #else
+      deinit {}
+    #endif
+
     @MainActor
     func show(anchorHint: NSView, content: some View) {
       let hosting = NSHostingController(rootView: AnyView(content))
