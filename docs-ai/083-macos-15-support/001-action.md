@@ -11,6 +11,7 @@
 | 2026-10-20 | Crash fix: every isolated deinit replaced with a non-isolated one, so teardown never runs through the back-deployed `swift_task_deinitOnExecutor` on macOS 15 | this commit |
 | 2026-10-21 | Path-key sweep: `PathPolicy.identifier(for:)` now derives every repository, worktree and open-path key. Twelve call sites still compared a bare `standardizedFileURL.path(…)`, which carries a trailing slash on macOS 15 but not on macOS 26, so the same directory produced two different ids | this commit |
 | 2026-10-21 | Crash fix, the sweep's blind spot: a generic class has a *synthesized* isolated deinit, which no `deinit` grep can see. `KeyedDebouncer` gets an explicit `nonisolated deinit {}` — without it Swift 6.2.4's `EarlyPerfInliner` segfaults on `-O` (swiftlang/swift#88173), so no Release build was possible | this commit |
+| 2026-11-06 | Runtime defect: the tab bar's horizontal `ScrollView` under the transparent titlebar keeps its clip view full-bleed and pads the scroll content down by the top safe-area inset while sizing the document view to the content's height, so every tab renders outside its hit-testable bounds and clicks, hover, and middle-click never reach it. The strip is hosted in its own `NSHostingView` now | this commit |
 
 ## Outcome & current state (as of 2026-10-19)
 
@@ -141,6 +142,39 @@ singleton that only deallocates at process exit, where no task-local is active.
 `PersistentPopover`'s coordinator was restored to upstream: the branch had dropped its
 `nonisolated` deinit hop and added a `@preconcurrency` conformance, which the Swift 6.2 toolchain
 reports as having no effect, and neither was needed to build against the macOS 15 SDK.
+
+## Tab-bar hit testing on macOS 15 (2026-11-06)
+
+On macOS 15.7.2 a project with two or more tabs showed the bar but no tab responded to the mouse:
+left-click did not select, hover never revealed the close button, and middle-click did not close.
+Selection through the keyboard and through `prowl` still worked, so the tab manager and the
+terminal content were fine — the mouse events never reached the tab views.
+
+`recursiveDescription` of the strip's AppKit tree showed the mismatch. The strip's
+`PlatformContainer` was `f=(0,-52,2223.5,83)` and its `NSClipView` was full-bleed `(0,0,·,83)`,
+while the `DocumentView` was only `(0,0,·,31)` tall and the tab children sat at `y=52.5` inside
+it. The 52 is the window's top safe-area inset: SwiftUI padded the scroll content down by it but
+sized the document view to the content's declared height only, so the rendered tabs lay outside
+the document view's bounds. `NSView.hitTest` walks the AppKit tree (the SwiftUI tab content is
+real `_NSInheritedView`s there), so AppKit resolved every click in the bar to the clip view. The
+sidebar above uses the same pattern but its clip view *is* inset by the safe area, which is why
+only the tab strip broke.
+
+`TerminalTabsView` now hosts its `ScrollView` in an `NSHostingView` (`TabStripScrollHost`),
+which starts a plain AppKit container with a zero safe area; the clip view, document view and
+tabs then all report `(0,0,·,31)` and hit testing works. A hosting view does not inherit the
+surrounding SwiftUI environment, so the strip forwards `CommandKeyObserver`,
+`GhosttyShortcutManager`, and `\.resolvedKeybindings` explicitly — without the last one the
+Command-key shortcut hints would fall back to the default keybindings. The hosted content keeps
+its own `@State` (drag reorder, measured tab frames, edit state) across `rootView` updates.
+
+Verified on macOS 15.7.2 with a Debug build: left-click selects and re-selects across two tabs,
+hover shows the close button, middle-click closes, double-click starts an inline rename, and an
+eight-tab overflow strip still scrolls to the selected tab. `make check` passes; the app suite
+ran 4412 passed / 0 failed. The mirror suite's
+`remoteShellCreationInDormantWorktreePreservesHostSelection` still fails for the trailing-slash
+id documented above (the test builds its id from `standardizedFileURL.path(…)`), independent of
+this change.
 
 ## Open questions
 
